@@ -1,5 +1,8 @@
 <script lang="ts">
-  export let onSave: () => void = () => {};
+  import {Save} from "../../wailsjs/go/main/App";
+
+  export let onSave:  () => Promise<void> = async () => {
+  };
   export let onExport: () => void = () => {};
 </script>
 

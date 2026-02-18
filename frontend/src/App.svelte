@@ -1,6 +1,6 @@
 <script lang="ts">
-  import {OpenPath} from '../wailsjs/go/main/App.js';
-  import {PickProjectJSON} from "../wailsjs/go/main/App";
+  import {CreateProjectJSONPath, OpenPath, Save} from '../wailsjs/go/main/App.js';
+  import {CreateNew, GetActualProject, PickProjectJSON} from "../wailsjs/go/main/App";
   import {utils} from "../wailsjs/go/models";
   import Hero from './components/Hero.svelte';
   import ActionsBar from './components/ActionsBar.svelte';
@@ -26,10 +26,35 @@
       alert("Dialog error:"+e.error);
     }
   }
-
-  const handleSave = () => {};
+  async function createProject() {
+    try {
+      const path = await CreateProjectJSONPath();
+      if (!path) return;
+      const res= await CreateNew(path);
+      data = res;
+      activeTab = 'entities';
+    } catch (e) {
+      alert("Dialog error:"+e.error);
+    }
+  }
+   const handleSave:  () => Promise<void> = async () => {
+    try{
+      alert("Guardando");
+      await Save();
+      alert("Guardado");
+    }catch(e){
+      alert("Error en guardado");
+    }
+  };
   const handleExport = () => {};
-  const handleCreate = () => {};
+  const handleRefresh = async () => {
+    try {
+      data = await GetActualProject();
+    } catch (err) {
+      const message = err?.error ?? err?.message ?? err;
+      alert(`No se pudo recargar el proyecto: ${message}`);
+    }
+  };
   const handleTabSelect = (tab:TabKey) => {
     activeTab = tab;
   };
@@ -37,7 +62,7 @@
 
 <main class="app-shell">
   {#if data === null}
-    <Hero onOpen={openProject}/>
+    <Hero onOpen={openProject} onCreate={createProject}/>
   {:else}
     <ActionsBar onSave={handleSave} onExport={handleExport}/>
   {/if}
@@ -49,9 +74,9 @@
 
     <section class="tab-panel">
       {#if activeTab === 'entities'}
-        <EntitiesTab entities={data.Entities} onCreate={handleCreate}/>
+        <EntitiesTab entities={data.Entities} onSave={handleRefresh}/>
       {:else if activeTab === 'relations'}
-        <RelationsTab />
+        <RelationsTab onRefresh={handleRefresh}/>
       {:else}
         <PlaceholderTab message="Contenido pendiente para esta pestaña."/>
       {/if}
@@ -64,10 +89,6 @@
 </main>
 
 <style>
-  :global(body) {
-    background: radial-gradient(120% 120% at 10% 20%, rgba(255,255,255,0.08), rgba(27,38,54,1));
-  }
-
   main.app-shell {
     max-width: 1080px;
     margin: 0 auto;
@@ -81,11 +102,8 @@
     padding: 18px;
     border-radius: 14px;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.02);
+    background: #111a2b;
     min-height: 240px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-    max-height: calc(100vh - 260px);
-    overflow: auto;
   }
 
   :global(.btn) {
@@ -101,6 +119,22 @@
     background: linear-gradient(120deg, #5ad1ff, #6287f6);
     color: #0b1a30;
     box-shadow: 0 12px 30px rgba(82, 158, 255, 0.35);
+  }
+
+  :global(.btn.danger) {
+    background: linear-gradient(120deg, #ff6b6b, #ff416c);
+    color: #0b0f1a;
+    box-shadow: 0 12px 30px rgba(255, 99, 123, 0.35);
+  }
+
+  :global(.btn.danger:hover) {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 36px rgba(255, 99, 123, 0.45);
+  }
+
+  :global(.btn.danger:active) {
+    transform: translateY(0);
+    box-shadow: 0 8px 24px rgba(255, 99, 123, 0.35);
   }
 
   :global(.btn.primary:hover) {

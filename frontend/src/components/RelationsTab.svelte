@@ -1,15 +1,37 @@
 <script lang="ts">
   import {onMount} from "svelte";
   import {utils} from "../../wailsjs/go/models";
-  import {GetCombinatory} from "../../wailsjs/go/main/App";
+  import {AddRelation, GetCombinatory, RemoveRelation} from "../../wailsjs/go/main/App";
 
+  export let onRefresh: () => Promise<void> = async () => {};
   let comb: utils.RelationView[] = [];
   let activeIndex = 0;
+  const relationOptions = ["", "N:1", "1:N", "N:N"];
+  let updating = false;
+  let relationOverrides: Record<string, string> = {};
 
-  async function load() {
+  const applyOverrides = () => {
+    comb = comb.map(view => ({
+      ...view,
+      Relations: view.Relations.map(rel => {
+        const key = `${view.IdPrincipalEntity}-${rel.IdEntity2}`;
+        const override = relationOverrides[key];
+        return override !== undefined ? {...rel, Relation: override} : rel;
+      })
+    }));
+  };
+
+  async function load(keepIndex = false) {
+    const prevIndex = activeIndex;
     const data = await GetCombinatory();
-    comb = data || [];
-    activeIndex = 0;
+    comb = (data || []).map(view => ({
+      ...view,
+      Relations: (view.Relations || []).map(rel => ({...rel, Relation: rel.Relation ?? ""}))
+    }));
+    applyOverrides();
+    activeIndex = keepIndex
+      ? Math.min(prevIndex, Math.max(comb.length - 1, 0))
+      : 0;
   }
 
   onMount(load);
@@ -26,6 +48,47 @@
   const prevSlide = () => {
     if (!comb.length) return;
     activeIndex = activeIndex === 0 ? comb.length - 1 : activeIndex - 1;
+  };
+
+  const relationIdentifiers = (relation: utils.RelationViewItem) => ({
+    principalId: comb[activeIndex]?.IdPrincipalEntity ?? null,
+    // Usamos siempre el Id si existe, incluso cuando Relation está vacío
+    relationId: relation?.Id ?? null,
+    targetId: relation?.IdEntity2 ?? null
+  });
+
+  const handleRelationChange = async (relation: utils.RelationViewItem) => {
+    const ids = relationIdentifiers(relation);
+    const selection = relation.Relation || "";
+    if (ids.principalId == null || ids.targetId == null) {
+      alert("Faltan IDs de entidad para registrar la relación.");
+      return;
+    }
+
+    const key = `${ids.principalId}-${ids.targetId}`;
+    relationOverrides[key] = selection; // Guardamos incluso vacío para respetar la selección
+    applyOverrides(); // Optimista: refleja en UI mientras persiste
+
+    updating = true;
+    try {
+      if (!selection) {
+        // Borrar relación existente solo si hay ID persistido
+        if (ids.relationId != null) {
+          alert("Borrando relacion "+ids.relationId);
+          await RemoveRelation(ids.relationId);
+        }
+      } else {
+        await AddRelation(ids.principalId, ids.targetId, selection);
+      }
+      await load(true);
+      await onRefresh();
+      applyOverrides();
+    } catch (err) {
+      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      alert(`No se pudo actualizar la relación: ${message}`);
+    } finally {
+      updating = false;
+    }
   };
 </script>
 
@@ -58,22 +121,6 @@
           </div>
         </header>
 
-        <div class="table-wrapper">
-          <table class="entities-table compact">
-            <thead>
-            <tr>
-              <th>Entidad principal</th>
-              <th style="width: 140px;">Acciones</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr>
-              <td>{comb[activeIndex].PrincipalEntity}</td>
-              <td><div class="action-slot"></div></td>
-            </tr>
-            </tbody>
-          </table>
-        </div>
 
         <div class="table-wrapper">
           <table class="entities-table compact">
@@ -81,7 +128,6 @@
             <tr>
               <th>Entidad destino</th>
               <th>Relación</th>
-              <th style="width: 140px;">Acciones</th>
             </tr>
             </thead>
             <tbody>
@@ -89,9 +135,22 @@
               {#each comb[activeIndex].Relations as relation}
                 <tr>
                   <td>{relation.Entity2}</td>
-                  <td>{relation.Relation ?? ''}</td>
+                  <td>
+                    <select
+                      class="relation-select"
+                      bind:value={relation.Relation}
+                      data-principal={relationIdentifiers(relation).principalId}
+                      data-relation-id={relationIdentifiers(relation).relationId}
+                      data-target={relationIdentifiers(relation).targetId}
+                      on:change={() => handleRelationChange(relation)}
+                      disabled={updating}
+                    >
+                      {#each relationOptions as option}
+                        <option value={option}>{option || "Sin valor"}</option>
+                      {/each}
+                    </select>
+                  </td>
 
-                  <td><div class="action-slot"></div></td>
                 </tr>
               {/each}
             {:else}
@@ -189,7 +248,7 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
     padding: 14px 14px 16px;
-    box-shadow: 0 12px 28px rgba(0,0,0,0.22);
+    box-shadow: none;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -285,6 +344,25 @@
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.04);
+  }
+
+  .relation-select {
+    width: 100%;
+    min-width: 120px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: #0f1726;
+    color: #e8edf7;
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+    transition: border 140ms ease, box-shadow 140ms ease;
+    appearance: none;
+  }
+
+  .relation-select:focus {
+    border-color: rgba(90, 209, 255, 0.8);
+    box-shadow: 0 0 0 2px rgba(90, 209, 255, 0.22);
   }
 
   @media (max-width: 720px) {

@@ -1,8 +1,10 @@
 <script lang="ts">
   import {utils} from "../../wailsjs/go/models";
+  import CreateEntity from "./forms/CreateEntity.svelte";
+  import DeleteEntity from "./forms/DeleteEntity.svelte";
 
-  export let entities:utils.Entity[] = [];
-  export let onCreate: () => void = () => {};
+  export let onSave: () => Promise<void> = async () => {};
+  export let entities: utils.Entity[] = [];
 </script>
 
 <div class="tab-toolbar">
@@ -10,9 +12,7 @@
     <p class="label">Entidades</p>
     <p class="muted">Vista general del proyecto. Agrega nuevas entidades desde aquí.</p>
   </div>
-  <div class="toolbar-actions">
-    <button class="btn secondary" on:click={onCreate}>Crear entidad</button>
-  </div>
+  <CreateEntity onSave={onSave}/>
 </div>
 
 <div class="table-wrapper">
@@ -33,7 +33,10 @@
         <td>{entity.Name}</td>
         <td>{entity.Description}</td>
         <td>
-          <!-- Aquí van tus botones -->
+          <div class="row-actions">
+            <CreateEntity onSave={onSave} id={entity.Id}/>
+            <DeleteEntity onSave={onSave} id={entity.Id}/>
+          </div>
         </td>
       </tr>
     {/each}
@@ -48,11 +51,6 @@
     align-items: center;
     gap: 12px;
     margin-bottom: 14px;
-  }
-
-  .toolbar-actions {
-    display: flex;
-    gap: 10px;
   }
 
   .label {
@@ -96,5 +94,11 @@
 
   .entities-table tbody tr:hover {
     background: rgba(255, 255, 255, 0.03);
+  }
+
+  .row-actions {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
   }
 </style>

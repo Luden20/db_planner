@@ -37,7 +37,9 @@ export namespace utils {
 	export class DbProject {
 	    Name: string;
 	    Entities: Entity[];
+	    EntitiesLastMax: number;
 	    Relations: Relation[];
+	    RelationsLastMax: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new DbProject(source);
@@ -47,7 +49,9 @@ export namespace utils {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Name = source["Name"];
 	        this.Entities = this.convertValues(source["Entities"], Entity);
+	        this.EntitiesLastMax = source["EntitiesLastMax"];
 	        this.Relations = this.convertValues(source["Relations"], Relation);
+	        this.RelationsLastMax = source["RelationsLastMax"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

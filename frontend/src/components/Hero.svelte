@@ -1,5 +1,6 @@
 <script lang="ts">
   export let onOpen: () => void;
+  export let onCreate: () => void;
 </script>
 
 <section class="hero">
@@ -9,6 +10,8 @@
     <p class="hint">Carga un proyecto para navegarlo en pestañas.</p>
   </div>
   <button class="btn primary" on:click={onOpen}>Cargar proyecto</button>
+  <button class="btn primary" on:click={onCreate}>Crear proyecto</button>
+
 </section>
 
 <style>

@@ -6,7 +6,7 @@
 <div class="tabs">
   <button class:active={activeTab === 'entities'} on:click={() => onSelect('entities')}>Entidades</button>
   <button class:active={activeTab === 'relations'} on:click={() => onSelect('relations')}>Relaciones</button>
-  <button class:active={activeTab === 'tertiary'} on:click={() => onSelect('tertiary')}>Tab 3</button>
+  <button class:active={activeTab === 'tertiary'} on:click={() => onSelect('tertiary')}>Atributos</button>
 </div>
 
 <style>
