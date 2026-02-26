@@ -10,8 +10,12 @@ export function AddRelation(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddRelation'](arg1, arg2, arg3);
 }
 
-export function CreateNew(arg1) {
-  return window['go']['main']['App']['CreateNew'](arg1);
+export function CreateExcelPath() {
+  return window['go']['main']['App']['CreateExcelPath']();
+}
+
+export function CreateNew(arg1, arg2) {
+  return window['go']['main']['App']['CreateNew'](arg1, arg2);
 }
 
 export function CreateProjectJSONPath() {
@@ -24,6 +28,10 @@ export function EditEntity(arg1, arg2, arg3) {
 
 export function EjectProject() {
   return window['go']['main']['App']['EjectProject']();
+}
+
+export function ExportToExcel(arg1) {
+  return window['go']['main']['App']['ExportToExcel'](arg1);
 }
 
 export function GetActualProject() {

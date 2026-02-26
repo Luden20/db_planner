@@ -8,6 +8,7 @@
 
   let open = false;
   let busy = false;
+  let errorMessage = "";
 
   const openModal = () => {
     open = true;
@@ -18,12 +19,26 @@
     open = false;
   };
 
+  const handleBackdropKey = (event: KeyboardEvent) => {
+    if (busy) return;
+    const key = event.key;
+    if (key === "Escape" || key === "Enter" || key === " ") {
+      event.preventDefault();
+      closeModal();
+    }
+  };
+
   const handleSuccess = async () => {
+    if (busy) return;
     busy = true;
+    errorMessage = "";
+
     try {
       await onSuccess();
       open = false;
     } catch (err) {
+      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      errorMessage = `${message}`;
       console.error("Modal action failed:", err);
     } finally {
       busy = false;
@@ -36,8 +51,14 @@
 </button>
 
 {#if open}
-  <div class="modal-backdrop" on:click={closeModal}>
-    <div class="modal" on:click|stopPropagation>
+  <div
+    class="modal-backdrop"
+    role="presentation"
+    tabindex="-1"
+    on:click={closeModal}
+    on:keydown={handleBackdropKey}
+  >
+    <div class="modal" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
       <header class="modal-header">
         <p class="modal-title">{title}</p>
         <button class="icon-btn" on:click={closeModal} aria-label="Cerrar modal">
@@ -47,6 +68,9 @@
 
       <section class="modal-body">
         <slot/>
+        {#if errorMessage}
+          <p class="error">{errorMessage}</p>
+        {/if}
       </section>
 
       <footer class="modal-footer">
@@ -127,6 +151,12 @@
     justify-content: flex-end;
     gap: 10px;
     margin-top: 4px;
+  }
+
+  .error {
+    margin: 6px 0 0;
+    color: #ffb4a2;
+    font-weight: 600;
   }
 
   @keyframes rise {

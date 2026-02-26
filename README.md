@@ -1,16 +1,41 @@
-# README
+# db_planner
 
-## About
+Herramienta de escritorio (Wails + Go + Svelte) para diseñar entidades y sus relaciones de forma visual.
 
-This is the official Wails Svelte-TS template.
+## Requisitos
+- Go 1.21+
+- Node 18+ y pnpm/npm
+- Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
 
-## Live Development
+## Desarrollo
+1) Instala dependencias del frontend:
+   ```bash
+   cd frontend
+   npm install
+   ```
+2) Vuelve a la raíz y levanta en modo dev con hot reload:
+   ```bash
+   wails dev
+   ```
+   - UI: Vite sirve la app.
+   - Métodos Go expuestos por Wails se pueden consumir desde la UI.
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## Build
+Genera el binario empaquetado:
+```bash
+wails build
+```
+El artefacto queda en `build/`.
 
-## Building
+## Funcionalidades destacadas
+- Gestión de entidades con tabla editable.
+- Pestaña de relaciones con navegación por entidad principal y controles sticky.
+- Persistencia de proyectos en JSON y recarga desde la app.
 
-To build a redistributable, production mode package, use `wails build`.
+## Estructura rápida
+- `frontend/`: Svelte + Vite.
+- `main.go`, `app.go`: arranque Wails y lógica de backend Go.
+- `wails.json`: configuración de build.
+
+## Licencia
+MIT con atribución. Si reutilizas código o assets, conserva el aviso de copyright y la referencia al proyecto.

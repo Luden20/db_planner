@@ -106,7 +106,9 @@
   <div class="empty-panel">Sin datos de relaciones.</div>
 {:else}
   <div class="slide-shell">
-    <button class="nav-btn" on:click={prevSlide} aria-label="Anterior" disabled={comb.length <= 1}>&lt;</button>
+    <div class="nav-col nav-col--left">
+      <button class="nav-btn" on:click={prevSlide} aria-label="Anterior" disabled={comb.length <= 1}>&lt;</button>
+    </div>
 
     <article class="slide">
       {#if comb[activeIndex]}
@@ -164,7 +166,9 @@
       {/if}
     </article>
 
-    <button class="nav-btn" on:click={nextSlide} aria-label="Siguiente" disabled={comb.length <= 1}>&gt;</button>
+    <div class="nav-col nav-col--right">
+      <button class="nav-btn" on:click={nextSlide} aria-label="Siguiente" disabled={comb.length <= 1}>&gt;</button>
+    </div>
   </div>
 
   <div class="slide-meta">
@@ -217,9 +221,25 @@
 
   .slide-shell {
     display: grid;
-    grid-template-columns: 52px 1fr 52px;
-    align-items: center;
+    grid-template-columns: max-content 1fr max-content;
+    align-items: flex-start;
     gap: 12px;
+  }
+
+  .nav-col {
+    position: sticky;
+    top: 12px;
+    align-self: flex-start;
+    display: flex;
+    z-index: 2;
+  }
+
+  .nav-col--left {
+    justify-content: flex-start;
+  }
+
+  .nav-col--right {
+    justify-content: flex-end;
   }
 
   .nav-btn {
@@ -253,6 +273,7 @@
     flex-direction: column;
     gap: 12px;
     min-height: 220px;
+    position: relative;
   }
 
   .slide-head {
@@ -260,6 +281,15 @@
     justify-content: space-between;
     align-items: center;
     gap: 12px;
+    position: sticky;
+    top: 0;
+    padding: 12px 14px;
+    margin: -6px 0 12px;
+    background: #0f1726;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    z-index: 1;
   }
 
   .slide-head h3 {

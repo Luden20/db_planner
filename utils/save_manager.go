@@ -55,12 +55,15 @@ func GetActualProject() (*DbProject, error) {
 	}
 	return nil, fmt.Errorf("project not initialized or set")
 }
-func CreateNew(path string) (*DbProject, error) {
+func CreateNew(path string, name string) (*DbProject, error) {
 	if singleInstance == nil {
 		lock.Lock()
 		defer lock.Unlock()
 		if singleInstance == nil {
 			var project DbProject
+			project.Name = name
+			project.Entities = make([]Entity, 0)
+			project.Relations = make([]Relation, 0)
 			singleInstance = &SingletonData{
 				project: &project,
 				path:    path,

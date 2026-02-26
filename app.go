@@ -4,6 +4,7 @@ import (
 	"context"
 	"db_planner/utils"
 	"fmt"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -23,8 +24,8 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
-func (a *App) CreateNew(path string) (*utils.DbProject, error) {
-	prj, err := utils.CreateNew(path)
+func (a *App) CreateNew(path string, name string) (*utils.DbProject, error) {
+	prj, err := utils.CreateNew(path, name)
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +51,53 @@ func (a *App) OpenPath(path string) (*utils.DbProject, error) {
 		return nil, err
 	}
 	return prj, nil
+}
+func (a *App) CreateExcelPath() (string, error) {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return "", err
+	}
+	defaultName := sanitizeFilename(prj.Name) + ".xlsx"
+	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Exportar a Excel",
+		DefaultFilename: defaultName,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Excel", Pattern: "*.xlsx"},
+			{DisplayName: "Todos", Pattern: "*"},
+		},
+	})
+}
+func (a *App) ExportToExcel(path string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("ruta de exportación no válida")
+	}
+	err = prj.ExportToExcel(path)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func sanitizeFilename(name string) string {
+	replacer := strings.NewReplacer(
+		"/", "_",
+		"\\", "_",
+		":", "-",
+		"*", "-",
+		"?", "",
+		"\"", "",
+		"<", "",
+		">", "",
+		"|", "-",
+	)
+	cleaned := strings.TrimSpace(replacer.Replace(name))
+	if cleaned == "" {
+		return "proyecto"
+	}
+	return cleaned
 }
 func (a *App) GetActualProject() (*utils.DbProject, error) {
 	prj, err := utils.GetActualProject()

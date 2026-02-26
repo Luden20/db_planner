@@ -6,13 +6,17 @@ export function AddEntity(arg1:string,arg2:string):Promise<void>;
 
 export function AddRelation(arg1:number,arg2:number,arg3:string):Promise<void>;
 
-export function CreateNew(arg1:string):Promise<utils.DbProject>;
+export function CreateExcelPath():Promise<string>;
+
+export function CreateNew(arg1:string,arg2:string):Promise<utils.DbProject>;
 
 export function CreateProjectJSONPath():Promise<string>;
 
 export function EditEntity(arg1:number,arg2:string,arg3:string):Promise<void>;
 
 export function EjectProject():Promise<void>;
+
+export function ExportToExcel(arg1:string):Promise<void>;
 
 export function GetActualProject():Promise<utils.DbProject>;
 

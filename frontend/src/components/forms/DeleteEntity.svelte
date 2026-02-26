@@ -7,8 +7,14 @@
 
   const handleRemove = async () => {
     try {
+      alert("Borrando entidad: " + id + "")
       await RemoveEntity(id);
-      await onSave();
+      //await onSave();
+      Promise.resolve(onSave()).catch((err) => {
+        const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+        alert(`Se borró, pero falló la actualización: ${message}`);
+        console.error("onSave failed:", err);
+      });
     } catch (err) {
       const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
       alert(`Error al borrar: ${message}`);
