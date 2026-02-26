@@ -76,8 +76,7 @@ func (p *DbProject) ExportToExcel(filename string) error {
 	if err != nil {
 		return err
 	}
-	_ = relationsIndex // keep Entities as active sheet
-
+	f.SetActiveSheet(relationsIndex)
 	col, row, err = excelize.CellNameToCoordinates("A1")
 	if err != nil {
 		return err
@@ -130,6 +129,10 @@ func (p *DbProject) ExportToExcel(filename string) error {
 			relRow++
 		}
 		startCol += 4
+	}
+	err = f.DeleteSheet("Sheet1")
+	if err != nil {
+		return err
 	}
 	return f.SaveAs(filename)
 }
