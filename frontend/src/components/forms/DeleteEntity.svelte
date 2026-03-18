@@ -1,23 +1,24 @@
 <script lang="ts">
   import ModalLauncher from "../ModalLauncher.svelte";
   import {RemoveEntity} from "../../../wailsjs/go/main/App";
+  import {showToast} from "../../lib/toast";
 
   export let id: number;
   export let onSave: () => Promise<void> = async () => {};
 
   const handleRemove = async () => {
     try {
-      alert("Borrando entidad: " + id + "")
+      showToast("Eliminando entidad...", "info", 1200);
       await RemoveEntity(id);
-      //await onSave();
+      showToast("Entidad eliminada.", "success");
       Promise.resolve(onSave()).catch((err) => {
         const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
-        alert(`Se borró, pero falló la actualización: ${message}`);
+        showToast(`Se borró, pero falló la actualización: ${message}`, "error");
         console.error("onSave failed:", err);
       });
     } catch (err) {
       const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
-      alert(`Error al borrar: ${message}`);
+      showToast(`Error al borrar: ${message}`, "error");
       throw err;
     }
   };

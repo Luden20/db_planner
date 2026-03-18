@@ -10,19 +10,21 @@
     PickProjectJSON,
     Save
   } from '../wailsjs/go/main/App.js';
-  import {utils} from "../wailsjs/go/models";
+  import type {utils} from "../wailsjs/go/models";
   import Hero from './components/Hero.svelte';
   import ActionsBar from './components/ActionsBar.svelte';
   import ProjectHeader from './components/ProjectHeader.svelte';
   import TabBar from './components/TabBar.svelte';
   import EntitiesTab from './components/EntitiesTab.svelte';
   import RelationsTab from "./components/RelationsTab.svelte";
-  import PlaceholderTab from './components/PlaceholderTab.svelte';
+  import AttributesTab from "./components/AttributesTab.svelte";
+  import {showToast, toastState} from "./lib/toast";
 
   type TabKey = 'entities' | 'relations' | 'tertiary';
 
   let data:utils.DbProject | null = null;
   let activeTab:TabKey = 'entities';
+  let focusEntityId: number | null = null;
   let showExitDialog = false;
   let exitInProgress = false;
   let showCreateDialog = false;
@@ -39,7 +41,8 @@
       data = res;
       activeTab = 'entities';
     } catch (e) {
-      alert("Dialog error:"+e.error);
+      const message = e?.error ?? e?.message ?? e ?? "Error desconocido";
+      showToast(`Error del dialogo: ${message}`, "error");
     }
   }
   const openCreateDialog = () => {
@@ -66,7 +69,7 @@
       }
     } catch (e) {
       const message = e?.error ?? e?.message ?? e;
-      alert("Dialog error:" + message);
+      showToast(`Error del dialogo: ${message}`, "error");
     }
   };
 
@@ -97,11 +100,11 @@
   };
    const handleSave:  () => Promise<void> = async () => {
     try{
-      alert("Guardando");
+      showToast("Guardando...", "info", 0);
       await Save();
-      alert("Guardado");
+      showToast("Proyecto guardado.", "success");
     }catch(e){
-      alert("Error en guardado");
+      showToast("Error al guardar.", "error");
     }
   };
   const handleExport = async () => {
@@ -111,10 +114,10 @@
         return;
       }
       await ExportToExcel(path);
-      alert("Exportado a Excel.");
+      showToast("Exportado a Excel.", "success");
     } catch (e) {
       const message = e?.error ?? e?.message ?? e;
-      alert(`Error al exportar: ${message}`);
+      showToast(`Error al exportar: ${message}`, "error");
     }
   };
   const handleRefresh = async () => {
@@ -122,10 +125,15 @@
       data = await GetActualProject();
     } catch (err) {
       const message = err?.error ?? err?.message ?? err;
-      alert(`No se pudo recargar el proyecto: ${message}`);
+      showToast(`No se pudo recargar el proyecto: ${message}`, "error");
     }
   };
   const handleTabSelect = (tab:TabKey) => {
+    activeTab = tab;
+  };
+
+  const handleJumpToEntityTab = (tab: TabKey, entityId: number | null = null) => {
+    focusEntityId = entityId;
     activeTab = tab;
   };
 
@@ -145,7 +153,7 @@
       resetProjectState();
     } catch (err) {
       const message = err?.error ?? err?.message ?? err;
-      alert(`No se pudo salir del proyecto: ${message}`);
+      showToast(`No se pudo salir del proyecto: ${message}`, "error");
     } finally {
       exitInProgress = false;
       showExitDialog = false;
@@ -160,7 +168,7 @@
       resetProjectState();
     } catch (err) {
       const message = err?.error ?? err?.message ?? err;
-      alert(`No se pudo guardar y salir: ${message}`);
+      showToast(`No se pudo guardar y salir: ${message}`, "error");
     } finally {
       exitInProgress = false;
       showExitDialog = false;
@@ -186,17 +194,23 @@
 
     <section class="tab-panel">
       {#if activeTab === 'entities'}
-        <EntitiesTab entities={data.Entities} onSave={handleRefresh}/>
+        <EntitiesTab entities={data.Entities} onSave={handleRefresh} onJumpTo={handleJumpToEntityTab}/>
       {:else if activeTab === 'relations'}
-        <RelationsTab onRefresh={handleRefresh}/>
+        <RelationsTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
       {:else}
-        <PlaceholderTab message="Contenido pendiente para esta pestaña."/>
+        <AttributesTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
       {/if}
     </section>
   {:else}
     <section class="empty-panel ghost">
       <p>Sin proyecto cargado. Usa el botón para empezar.</p>
     </section>
+  {/if}
+
+  {#if $toastState}
+    <aside class={`toast toast--${$toastState.tone}`}>
+      <span>{$toastState.message}</span>
+    </aside>
   {/if}
 
   {#if showExitDialog}
@@ -476,9 +490,59 @@
     font-weight: 600;
   }
 
+  .toast {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 120;
+    min-width: 240px;
+    max-width: min(360px, calc(100vw - 32px));
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #eef6ff;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(12px);
+    animation: toast-in 180ms ease-out;
+  }
+
+  .toast--info {
+    background: linear-gradient(135deg, rgba(20, 45, 73, 0.94), rgba(30, 74, 109, 0.94));
+    border-color: rgba(90, 209, 255, 0.24);
+  }
+
+  .toast--success {
+    background: linear-gradient(135deg, rgba(18, 55, 34, 0.95), rgba(31, 88, 52, 0.95));
+    border-color: rgba(113, 201, 118, 0.28);
+  }
+
+  .toast--error {
+    background: linear-gradient(135deg, rgba(83, 25, 35, 0.95), rgba(125, 38, 56, 0.95));
+    border-color: rgba(255, 128, 154, 0.28);
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translate3d(16px, -8px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
   @media (max-width: 720px) {
     main.app-shell {
       padding: 22px 16px 36px;
+    }
+
+    .toast {
+      top: 16px;
+      right: 16px;
+      left: 16px;
+      min-width: 0;
+      max-width: none;
     }
   }
 </style>

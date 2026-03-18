@@ -117,6 +117,16 @@ func (a *App) AddRelation(idEnt1 int, idEnt2 int, relation string) error {
 	}
 	return nil
 }
+func (a *App) AddAttribute(entityId int, name string, description string, attType string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.AddAttribute(entityId, name, description, attType); err != nil {
+		return err
+	}
+	return nil
+}
 func (a *App) RemoveRelation(id int) error {
 	prj, err := utils.GetActualProject()
 	if err != nil {
@@ -128,12 +138,52 @@ func (a *App) RemoveRelation(id int) error {
 	}
 	return nil
 }
+func (a *App) EditAttribute(entityId int, attributeId int, name string, description string, attType string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.EditAttribute(entityId, attributeId, name, description, attType); err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) RemoveAttribute(entityId int, attributeId int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.RemoveAttribute(entityId, attributeId); err != nil {
+		return err
+	}
+	return nil
+}
 func (a *App) RemoveEntity(id int) error {
 	prj, err := utils.GetActualProject()
 	if err != nil {
 		return err
 	}
 	if err := prj.RemoveEntity(id); err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) MarkEntityStatus(entityId int, status bool) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.MarkEntityStatus(entityId, status); err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) MoveAttribute(entityId int, attributeId int, direction string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.MoveAttribute(entityId, attributeId, direction); err != nil {
 		return err
 	}
 	return nil
@@ -195,6 +245,16 @@ func (a *App) EditEntity(id int, name string, description string) error {
 	}
 	err = prj.EditEntity(id, name, description)
 	if err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) MoveEntity(id int, direction string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.MoveEntity(id, direction); err != nil {
 		return err
 	}
 	return nil

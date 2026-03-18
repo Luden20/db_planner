@@ -4,19 +4,36 @@
   export let confirmLabel = "Confirmar";
   export let triggerVariant: "primary" | "danger" | "secondary" = "primary";
   export let confirmVariant: "primary" | "danger" | "secondary" = "primary";
+  export let size: "default" | "form" = "default";
+  export let showTrigger = true;
   export let onSuccess: () => void | Promise<void> = () => {};
+  export let onOpen: () => void | Promise<void> = () => {};
 
-  let open = false;
+  let isOpen = false;
   let busy = false;
   let errorMessage = "";
 
   const openModal = () => {
-    open = true;
+    errorMessage = "";
+    try {
+      const result = onOpen();
+      if (result instanceof Promise) {
+        result.catch((err) => {
+          const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+          errorMessage = `${message}`;
+        });
+      }
+    } catch (err) {
+      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      errorMessage = `${message}`;
+    } finally {
+      isOpen = true;
+    }
   };
 
   const closeModal = () => {
     if (busy) return;
-    open = false;
+    isOpen = false;
   };
 
   const handleBackdropKey = (event: KeyboardEvent) => {
@@ -35,7 +52,7 @@
 
     try {
       await onSuccess();
-      open = false;
+      isOpen = false;
     } catch (err) {
       const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
       errorMessage = `${message}`;
@@ -44,13 +61,23 @@
       busy = false;
     }
   };
+
+  export const openDialog = () => {
+    openModal();
+  };
+
+  export const closeDialog = () => {
+    closeModal();
+  };
 </script>
 
-<button class={`btn ${triggerVariant}`} on:click={openModal}>
-  {triggerLabel}
-</button>
+{#if showTrigger}
+  <button class={`btn ${triggerVariant}`} on:click={openModal}>
+    {triggerLabel}
+  </button>
+{/if}
 
-{#if open}
+{#if isOpen}
   <div
     class="modal-backdrop"
     role="presentation"
@@ -58,7 +85,7 @@
     on:click={closeModal}
     on:keydown={handleBackdropKey}
   >
-    <div class="modal" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <div class={`modal modal--${size}`} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
       <header class="modal-header">
         <p class="modal-title">{title}</p>
         <button class="icon-btn" on:click={closeModal} aria-label="Cerrar modal">
@@ -97,13 +124,22 @@
 
   .modal {
     width: min(560px, 100%);
+    max-height: min(88vh, 920px);
     background: linear-gradient(135deg, rgba(17, 25, 40, 0.95), rgba(20, 32, 52, 0.95));
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 16px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
     color: #e8edf7;
     padding: 18px 18px 16px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
     animation: rise 160ms ease-out;
+  }
+
+  .modal--form {
+    width: min(760px, 100%);
+    padding: 24px 24px 20px;
   }
 
   .modal-header {
@@ -144,6 +180,12 @@
   .modal-body {
     padding: 8px 2px 14px;
     color: #dbe8ff;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .modal--form .modal-body {
+    padding: 14px 4px 20px;
   }
 
   .modal-footer {
@@ -173,6 +215,15 @@
   @media (max-width: 540px) {
     .modal {
       padding: 16px 16px 14px;
+    }
+
+    .modal--form {
+      width: 100%;
+      padding: 18px 16px 16px;
+    }
+
+    .modal--form .modal-body {
+      padding: 12px 2px 16px;
     }
   }
 </style>
