@@ -18,6 +18,10 @@ export function CreateExcelPath() {
   return window['go']['main']['App']['CreateExcelPath']();
 }
 
+export function CreateExcelPathWithoutRelations() {
+  return window['go']['main']['App']['CreateExcelPathWithoutRelations']();
+}
+
 export function CreateNew(arg1, arg2) {
   return window['go']['main']['App']['CreateNew'](arg1, arg2);
 }
@@ -36,6 +40,10 @@ export function EditEntity(arg1, arg2, arg3) {
 
 export function EjectProject() {
   return window['go']['main']['App']['EjectProject']();
+}
+
+export function ExportCombinationsToExcel(arg1) {
+  return window['go']['main']['App']['ExportCombinationsToExcel'](arg1);
 }
 
 export function ExportToExcel(arg1) {

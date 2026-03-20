@@ -1,9 +1,11 @@
 <script lang="ts">
   import {
     CreateExcelPath,
+    CreateExcelPathWithoutRelations,
     CreateNew,
     CreateProjectJSONPath,
     EjectProject,
+    ExportCombinationsToExcel,
     ExportToExcel,
     GetActualProject,
     OpenPath,
@@ -114,10 +116,23 @@
         return;
       }
       await ExportToExcel(path);
-      showToast("Exportado a Excel.", "success");
+      showToast("Exportado a Excel con relaciones.", "success");
     } catch (e) {
       const message = e?.error ?? e?.message ?? e;
       showToast(`Error al exportar: ${message}`, "error");
+    }
+  };
+  const handleExportWithoutRelations = async () => {
+    try {
+      const path = await CreateExcelPathWithoutRelations();
+      if (!path) {
+        return;
+      }
+      await ExportCombinationsToExcel(path);
+      showToast("Exportado a Excel sin tipos de relación.", "success");
+    } catch (e) {
+      const message = e?.error ?? e?.message ?? e;
+      showToast(`Error al exportar sin relaciones: ${message}`, "error");
     }
   };
   const handleRefresh = async () => {
@@ -184,7 +199,12 @@
   {#if data === null}
     <Hero onOpen={openProject} onCreate={openCreateDialog}/>
   {:else}
-    <ActionsBar onSave={handleSave} onExport={handleExport} onExit={handleExitRequest}/>
+    <ActionsBar
+      onSave={handleSave}
+      onExport={handleExport}
+      onExportWithoutRelations={handleExportWithoutRelations}
+      onExit={handleExitRequest}
+    />
   {/if}
 
   {#if data != null}

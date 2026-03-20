@@ -53,11 +53,19 @@ func (a *App) OpenPath(path string) (*utils.DbProject, error) {
 	return prj, nil
 }
 func (a *App) CreateExcelPath() (string, error) {
+	return a.createExcelPath("")
+}
+
+func (a *App) CreateExcelPathWithoutRelations() (string, error) {
+	return a.createExcelPath("-sin-relaciones")
+}
+
+func (a *App) createExcelPath(suffix string) (string, error) {
 	prj, err := utils.GetActualProject()
 	if err != nil {
 		return "", err
 	}
-	defaultName := sanitizeFilename(prj.Name) + ".xlsx"
+	defaultName := sanitizeFilename(prj.Name) + suffix + ".xlsx"
 	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Exportar a Excel",
 		DefaultFilename: defaultName,
@@ -76,6 +84,20 @@ func (a *App) ExportToExcel(path string) error {
 		return fmt.Errorf("ruta de exportación no válida")
 	}
 	err = prj.ExportToExcel(path)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) ExportCombinationsToExcel(path string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("ruta de exportación no válida")
+	}
+	err = prj.ExportCombinationsToExcel(path)
 	if err != nil {
 		return err
 	}
