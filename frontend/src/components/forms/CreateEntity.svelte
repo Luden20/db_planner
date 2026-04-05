@@ -147,29 +147,29 @@
 <style>
   .toolbar-actions {
     display: inline-flex;
-    gap: 8px;
+    gap: 0.5rem;
   }
 
   .field {
     display: grid;
-    gap: 10px;
-    color: #cfd9e9;
-    font-size: 14px;
-    padding: 4px 2px;
+    gap: 0.65rem;
+    color: var(--ink-soft);
+    font-size: 0.92rem;
+    padding: 0.25rem 0.1rem;
   }
 
   .field input,
   .field textarea {
     width: 100%;
     box-sizing: border-box;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.04);
-    color: #e8edf7;
-    padding: 14px 16px;
-    font-size: 15px;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background: var(--field-surface);
+    color: var(--ink);
+    padding: 0.9rem 1rem;
+    font-size: 0.96rem;
     outline: none;
-    transition: border 140ms ease, box-shadow 140ms ease;
+    transition: border 140ms ease, box-shadow 140ms ease, background 140ms ease;
   }
 
   .field textarea {
@@ -179,13 +179,14 @@
 
   .field input:focus,
   .field textarea:focus {
-    border-color: rgba(90, 209, 255, 0.8);
-    box-shadow: 0 0 0 2px rgba(90, 209, 255, 0.22);
+    border-color: var(--focus-border);
+    box-shadow: var(--focus-ring);
+    background: var(--field-surface-focus);
   }
 
   .form-error {
-    margin: 2px 0 0;
-    color: #ffb4a2;
+    margin: 0.2rem 0 0;
+    color: var(--danger);
     font-weight: 600;
   }
 </style>

@@ -295,10 +295,10 @@
   </div>
   <div class="toolbar-actions">
     <div class="view-jumps">
-      <button class="jump-btn" on:click={() => jumpToTab("entities")} disabled={!selectedId}>
+      <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={!selectedId}>
         Ir a definicion
       </button>
-      <button class="jump-btn" on:click={() => jumpToTab("relations")} disabled={!selectedId}>
+      <button class="control control--accent" on:click={() => jumpToTab("relations")} disabled={!selectedId}>
         Ir a combinatorio
       </button>
     </div>
@@ -322,8 +322,16 @@
       {/each}
     </select>
     <div class="entity-nav">
-      <button class="nav-btn" on:click={prevEntity} aria-label="Entidad anterior" disabled={entities.length <= 1}>&lt;</button>
-      <button class="nav-btn" on:click={nextEntity} aria-label="Entidad siguiente" disabled={entities.length <= 1}>&gt;</button>
+      <button class="control control--icon control--soft" on:click={prevEntity} aria-label="Entidad anterior" disabled={entities.length <= 1}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
+        </svg>
+      </button>
+      <button class="control control--icon control--soft" on:click={nextEntity} aria-label="Entidad siguiente" disabled={entities.length <= 1}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
+        </svg>
+      </button>
     </div>
   </div>
 </div>
@@ -357,8 +365,7 @@
     </div>
     <div class="entity-card-actions">
       <button
-        class:approve-btn={true}
-        class:approve-btn--approved={isApproved(current)}
+        class={`control control--success ${isApproved(current) ? 'control--active' : ''}`}
         on:click={toggleCurrentApproval}
         disabled={approvalUpdating}
       >
@@ -368,7 +375,12 @@
   </div>
   {#if relationSummary.length}
     <div class:info-banner={true} class:info-banner--approved={isApproved(current)}>
-      <p class="banner-title">Relaciones de esta entidad</p>
+      <div class="relation-banner-head">
+        <div>
+          <p class="banner-title">Relaciones de esta entidad</p>
+          <p class="relation-banner-copy">Resumen textual de los cruces registrados para esta entidad.</p>
+        </div>
+      </div>
       <div class="relation-groups">
         {#each relationSummary as group}
           <section class="relation-group">
@@ -492,34 +504,6 @@
     width: 100%;
   }
 
-  .jump-btn {
-    border: 1px solid rgba(90, 209, 255, 0.22);
-    background: rgba(90, 209, 255, 0.1);
-    color: #dff5ff;
-    border-radius: 10px;
-    padding: 14px 16px;
-    min-height: 56px;
-    flex: 1 1 0;
-    font-size: 18px;
-    font-weight: 700;
-    text-align: center;
-    cursor: pointer;
-    transition: background 140ms ease, transform 120ms ease, opacity 120ms ease;
-  }
-
-  .jump-btn:hover:enabled {
-    background: rgba(90, 209, 255, 0.18);
-  }
-
-  .jump-btn:active:enabled {
-    transform: translateY(1px);
-  }
-
-  .jump-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
   .info-banner {
     margin-bottom: 12px;
     padding: 12px;
@@ -600,6 +584,22 @@
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
+  .relation-banner-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .relation-banner-copy {
+    margin: 4px 0 0;
+    color: var(--ink-faint);
+    max-width: 58ch;
+    line-height: 1.45;
+  }
+
   .relation-group {
     padding: 10px;
     border-radius: 12px;
@@ -650,6 +650,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
 
   .status-pill {
     display: inline-flex;
@@ -739,30 +740,6 @@
     align-items: center;
   }
 
-  .nav-btn {
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.08);
-    color: #d9e4f5;
-    border-radius: 10px;
-    height: 40px;
-    width: 42px;
-    cursor: pointer;
-    transition: background 150ms ease, transform 120ms ease;
-  }
-
-  .nav-btn:hover:enabled {
-    background: rgba(90, 209, 255, 0.16);
-  }
-
-  .nav-btn:active:enabled {
-    transform: translateY(1px);
-  }
-
-  .nav-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
   .entity-select {
     border-radius: 10px;
     background: rgba(21, 32, 46, 0.82);
@@ -794,33 +771,122 @@
     align-items: center;
   }
 
-  .approve-btn {
-    border: 1px solid rgba(121, 205, 126, 0.32);
-    background: rgba(48, 83, 52, 0.32);
-    color: #dff7df;
-    border-radius: 10px;
-    padding: 10px 14px;
-    cursor: pointer;
-    transition: background 140ms ease, transform 120ms ease;
-  }
-
-  .approve-btn:hover:enabled {
-    background: rgba(76, 175, 80, 0.28);
-  }
-
-  .approve-btn--approved {
-    background: rgba(76, 175, 80, 0.18);
-  }
-
-  .approve-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
   @media (max-width: 720px) {
     .entity-status-card {
       flex-direction: column;
       align-items: stretch;
     }
+
+    .relation-banner-head {
+      align-items: stretch;
+      flex-direction: column;
+    }
   }
+
+  .tab-toolbar {
+    margin-bottom: 1rem;
+    padding: 1.05rem 1.1rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-md) - 4px);
+    background: var(--panel-surface);
+  }
+
+  .label,
+  .banner-title {
+    color: var(--accent);
+    font-size: 0.74rem;
+    letter-spacing: 0.16em;
+    font-weight: 800;
+  }
+
+  .muted,
+  .entity-description,
+  .helper,
+  .empty-panel {
+    color: var(--ink-faint);
+    opacity: 1;
+  }
+
+  .entity-select {
+    border-color: var(--border);
+    background: var(--field-surface);
+    color: var(--ink);
+    box-shadow: none;
+  }
+
+  .entity-select:focus {
+    border-color: var(--focus-border);
+    box-shadow: var(--focus-ring);
+  }
+
+  .info-banner,
+  .entity-status-card {
+    border-color: var(--border);
+    background: var(--panel-surface-strong);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .info-banner--approved,
+  .entity-status-card--approved {
+    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+    background: var(--panel-surface-success);
+  }
+
+  .entity-status-row h3,
+  .entities-table {
+    color: var(--ink);
+  }
+
+  .relation-group {
+    background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
+    border-color: var(--line-faint);
+  }
+
+  .relation-group-type,
+  .relation-group-label {
+    color: var(--ink-soft);
+  }
+
+  .pill,
+  .status-pill {
+    background: var(--chip-surface);
+    border-color: var(--line-soft);
+    color: var(--ink-soft);
+  }
+
+  .status-pill--approved {
+    background: var(--chip-success-surface);
+    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+    color: var(--success);
+  }
+
+  .table-wrapper.frosted {
+    background: var(--panel-surface-strong);
+    border-color: var(--border);
+    border-radius: calc(var(--radius-md) - 4px);
+    box-shadow: var(--surface-highlight);
+  }
+
+  .entities-table thead th {
+    color: var(--ink-faint);
+    border-bottom-color: var(--line-soft);
+    font-size: 0.76rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .entities-table tbody tr:nth-child(odd):not(.empty-row),
+  .entities-table tbody tr:nth-child(even):not(.empty-row) {
+    background: transparent;
+  }
+
+  .entities-table tbody tr:hover:not(.empty-row) {
+    background: var(--hover-soft);
+  }
+
+  .empty-panel {
+    border-color: var(--line-soft);
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+  }
+
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {onMount} from "svelte";
   import {
     CreateExcelPath,
     CreateExcelPathWithoutRelations,
@@ -14,19 +15,22 @@
   } from '../wailsjs/go/main/App.js';
   import type {utils} from "../wailsjs/go/models";
   import Hero from './components/Hero.svelte';
-  import ActionsBar from './components/ActionsBar.svelte';
-  import ProjectHeader from './components/ProjectHeader.svelte';
-  import TabBar from './components/TabBar.svelte';
+  import WorkspaceRibbon from "./components/WorkspaceRibbon.svelte";
   import EntitiesTab from './components/EntitiesTab.svelte';
   import RelationsTab from "./components/RelationsTab.svelte";
   import AttributesTab from "./components/AttributesTab.svelte";
+  import GraphTab from "./components/GraphTab.svelte";
   import {showToast, toastState} from "./lib/toast";
 
-  type TabKey = 'entities' | 'relations' | 'tertiary';
+  type TabKey = 'entities' | 'relations' | 'tertiary' | 'diagram';
+  type ThemeMode = "light" | "dark";
+  const THEME_STORAGE_KEY = "db-planner-theme";
 
   let data:utils.DbProject | null = null;
   let activeTab:TabKey = 'entities';
+  let themeMode: ThemeMode = "light";
   let focusEntityId: number | null = null;
+  let ribbonHeight = 0;
   let showExitDialog = false;
   let exitInProgress = false;
   let showCreateDialog = false;
@@ -147,6 +151,22 @@
     activeTab = tab;
   };
 
+  const applyTheme = (nextTheme: ThemeMode) => {
+    themeMode = nextTheme;
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.theme = nextTheme;
+    }
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+    } catch (err) {
+      console.warn("No se pudo persistir el tema:", err);
+    }
+  };
+
+  const toggleTheme = () => {
+    applyTheme(themeMode === "dark" ? "light" : "dark");
+  };
+
   const handleJumpToEntityTab = (tab: TabKey, entityId: number | null = null) => {
     focusEntityId = entityId;
     activeTab = tab;
@@ -193,30 +213,67 @@
   const cancelExit = () => {
     showExitDialog = false;
   };
+
+  onMount(() => {
+    let nextTheme: ThemeMode = "light";
+    try {
+      const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+      const prefersDark = typeof window.matchMedia === "function"
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (storedTheme === "light" || storedTheme === "dark") {
+        nextTheme = storedTheme;
+      } else if (prefersDark) {
+        nextTheme = "dark";
+      }
+    } catch (err) {
+      console.warn("No se pudo leer el tema guardado:", err);
+    }
+
+    applyTheme(nextTheme);
+  });
 </script>
 
 <main class="app-shell">
   {#if data === null}
+    <div class="shell-utility">
+      <button
+        class="theme-utility control control--soft control--sm"
+        type="button"
+        on:click={toggleTheme}
+        aria-label={themeMode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+      >
+        {themeMode === "dark" ? "Cambiar a claro" : "Cambiar a oscuro"}
+      </button>
+    </div>
     <Hero onOpen={openProject} onCreate={openCreateDialog}/>
   {:else}
-    <ActionsBar
-      onSave={handleSave}
-      onExport={handleExport}
-      onExportWithoutRelations={handleExportWithoutRelations}
-      onExit={handleExitRequest}
-    />
+    <div class="workspace-ribbon-slot" bind:clientHeight={ribbonHeight}>
+      <WorkspaceRibbon
+        name={data.Name}
+        entityCount={data.Entities.length}
+        activeTab={activeTab}
+        themeMode={themeMode}
+        onSelect={handleTabSelect}
+        onToggleTheme={toggleTheme}
+        onSave={handleSave}
+        onExport={handleExport}
+        onExportWithoutRelations={handleExportWithoutRelations}
+        onExit={handleExitRequest}
+      />
+    </div>
   {/if}
 
   {#if data != null}
-    <ProjectHeader name={data.Name} entityCount={data.Entities.length}/>
-
-    <TabBar activeTab={activeTab} onSelect={handleTabSelect}/>
-
-    <section class="tab-panel">
+    <section
+      class="tab-panel tab-panel--workspace"
+      style={`--workspace-ribbon-offset: ${Math.max(ribbonHeight + 18, 18)}px;`}
+    >
       {#if activeTab === 'entities'}
         <EntitiesTab entities={data.Entities} onSave={handleRefresh} onJumpTo={handleJumpToEntityTab}/>
       {:else if activeTab === 'relations'}
         <RelationsTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
+      {:else if activeTab === 'diagram'}
+        <GraphTab entities={data.Entities} onJumpTo={handleJumpToEntityTab}/>
       {:else}
         <AttributesTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
       {/if}
@@ -314,46 +371,92 @@
 
 <style>
   main.app-shell {
-    max-width: 1080px;
+    position: relative;
+    max-width: 1680px;
     margin: 0 auto;
-    padding: 32px 24px 48px;
-    color: #e8edf7;
+    padding: clamp(0.95rem, 2.2vw, 2rem) clamp(0.9rem, 2.4vw, 2.4rem) clamp(1.2rem, 3vw, 2.2rem);
+    color: var(--ink);
     text-align: left;
   }
 
+  .shell-utility {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.85rem;
+  }
+
+  .theme-utility {
+    min-width: 10.5rem;
+  }
+
+  .workspace-ribbon-slot {
+    margin-bottom: 0.85rem;
+  }
+
   .tab-panel {
-    margin-top: 16px;
-    padding: 18px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: #111a2b;
-    min-height: 240px;
+    margin-top: 0.85rem;
+    padding: clamp(0.9rem, 1.6vw, 1.3rem);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--panel-surface);
+    box-shadow: var(--shadow-lg);
+    min-height: 18rem;
+  }
+
+  .tab-panel--workspace {
+    margin-top: 0;
+  }
+
+  .tab-panel--workspace :global(.relations-tab) {
+    --relations-sticky-top: var(--workspace-ribbon-offset);
   }
 
   :global(.btn) {
-    border: none;
-    border-radius: 12px;
-    padding: 12px 16px;
-    font-weight: 700;
+    --btn-surface: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+    --btn-border: color-mix(in srgb, var(--ink) 10%, transparent);
+    --btn-ink: var(--ink);
+    --btn-shadow: 0 14px 24px color-mix(in srgb, var(--ink) 10%, transparent);
+    position: relative;
+    border: 1px solid var(--btn-border);
+    border-radius: 1rem;
+    min-height: 2.95rem;
+    padding: 0.72rem 1.08rem;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--btn-surface) 100%, white 0%),
+      color-mix(in srgb, var(--btn-surface) 88%, var(--bg-muted) 12%)
+    );
+    color: var(--btn-ink);
+    font-weight: 760;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    box-shadow: var(--btn-shadow), inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
     cursor: pointer;
-    transition: transform 150ms ease, box-shadow 180ms ease, background 180ms ease;
+    transition:
+      transform 150ms cubic-bezier(.19, 1, .22, 1),
+      box-shadow 180ms ease,
+      background 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    gap: 0.5rem;
   }
 
   :global(.btn svg) {
-    width: 14px;
-    height: 14px;
+    width: 0.9rem;
+    height: 0.9rem;
     fill: currentColor;
     flex-shrink: 0;
     opacity: 0.92;
   }
 
   :global(.btn.primary) {
-    background: linear-gradient(120deg, #5ad1ff, #6287f6);
-    color: #0b1a30;
-    box-shadow: 0 12px 30px rgba(82, 158, 255, 0.35);
+    --btn-surface: var(--action-strong-surface);
+    --btn-border: var(--action-strong-border);
+    --btn-ink: var(--action-strong-ink);
+    --btn-shadow: 0 18px 30px color-mix(in srgb, var(--ink) 18%, transparent);
   }
 
   :global(.btn:disabled) {
@@ -364,187 +467,189 @@
   }
 
   :global(.btn.danger) {
-    background: linear-gradient(120deg, #ff6b6b, #ff416c);
-    color: #0b0f1a;
-    box-shadow: 0 12px 30px rgba(255, 99, 123, 0.35);
+    --btn-surface: color-mix(in srgb, var(--danger) 14%, var(--surface-strong));
+    --btn-border: color-mix(in srgb, var(--danger) 20%, var(--border));
+    --btn-ink: var(--danger);
+    --btn-shadow: 0 14px 26px color-mix(in srgb, var(--danger) 14%, transparent);
   }
 
-  :global(.btn.danger:hover) {
+  :global(.btn:hover) {
     transform: translateY(-1px);
-    box-shadow: 0 16px 36px rgba(255, 99, 123, 0.45);
+    border-color: color-mix(in srgb, var(--btn-border) 74%, var(--border-strong));
+    box-shadow: 0 18px 28px color-mix(in srgb, var(--ink) 12%, transparent), inset 0 1px 0 color-mix(in srgb, white 34%, transparent);
   }
 
-  :global(.btn.danger:active) {
-    transform: translateY(0);
-    box-shadow: 0 8px 24px rgba(255, 99, 123, 0.35);
-  }
-
-  :global(.btn.primary:hover) {
-    transform: translateY(-1px);
-    box-shadow: 0 16px 36px rgba(82, 158, 255, 0.45);
-  }
-
-  :global(.btn.primary:active) {
-    transform: translateY(0);
-    box-shadow: 0 8px 24px rgba(82, 158, 255, 0.35);
+  :global(.btn:active) {
+    transform: translateY(1px) scale(0.985);
+    box-shadow: 0 9px 16px color-mix(in srgb, var(--ink) 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
   }
 
   :global(.btn.secondary) {
-    background: rgba(255, 255, 255, 0.08);
-    color: #d9e4f5;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-  }
-
-  :global(.btn.secondary:hover) {
-    background: rgba(255, 255, 255, 0.12);
+    --btn-surface: var(--control-soft-surface);
+    --btn-border: var(--border);
+    --btn-ink: var(--ink);
   }
 
   :global(.empty-panel) {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #cfd9e9;
-    opacity: 0.85;
-    font-size: 15px;
-    height: 180px;
-    border: 1px dashed rgba(255, 255, 255, 0.12);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.02);
+    color: var(--ink-soft);
+    font-size: 0.96rem;
+    min-height: 11rem;
+    border: 1px dashed var(--line-soft);
+    border-radius: calc(var(--radius-md) - 2px);
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
   }
 
   :global(.empty-panel.ghost) {
-    margin-top: 18px;
+    margin-top: 1rem;
   }
 
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(7, 13, 26, 0.7);
+    background: var(--overlay-scrim);
     display: grid;
     place-items: center;
-    padding: 18px;
+    padding: 1.2rem;
     z-index: 10;
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(10px);
   }
 
   .modal {
     width: min(520px, 100%);
-    background: #0d1627;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    padding: 20px 22px;
-    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.38);
+    background: var(--popover-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1.35rem 1.45rem;
+    box-shadow: var(--shadow-lg);
   }
 
   .modal-kicker {
     margin: 0;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #9ab5e4;
-    font-size: 12px;
+    letter-spacing: 0.16em;
+    color: var(--accent);
+    font-size: 0.74rem;
+    font-weight: 800;
   }
 
   .modal h2 {
-    margin: 8px 0 6px;
-    font-size: 22px;
+    margin: 0.5rem 0 0.4rem;
+    font-size: 2rem;
+    line-height: 0.98;
   }
 
   .modal-hint {
-    margin: 0 0 18px;
-    color: #cfd9e9;
-    opacity: 0.85;
+    margin: 0 0 1rem;
+    color: var(--ink-soft);
+    line-height: 1.55;
   }
 
   .modal-actions {
     display: flex;
-    gap: 10px;
+    gap: 0.7rem;
     flex-wrap: wrap;
   }
 
   .modal-actions .btn {
-    min-width: 140px;
+    min-width: 8.75rem;
   }
 
   .field {
     display: grid;
-    gap: 8px;
-    color: #cfd9e9;
-    font-size: 14px;
-    margin: 12px 0 0;
+    gap: 0.5rem;
+    color: var(--ink-soft);
+    font-size: 0.92rem;
+    margin: 0.9rem 0 0;
   }
 
   .field input {
     width: 100%;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.04);
-    color: #e8edf7;
-    padding: 12px 12px;
-    font-size: 14px;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background: var(--field-surface);
+    color: var(--ink);
+    padding: 0.85rem 0.95rem;
+    font-size: 0.95rem;
     outline: none;
-    transition: border 140ms ease, box-shadow 140ms ease;
+    transition: border 140ms ease, box-shadow 140ms ease, background 140ms ease;
   }
 
   .field input:focus {
-    border-color: rgba(90, 209, 255, 0.8);
-    box-shadow: 0 0 0 2px rgba(90, 209, 255, 0.22);
+    border-color: var(--focus-border);
+    box-shadow: var(--focus-ring);
+    background: var(--field-surface-focus);
   }
 
   .file-row {
     display: flex;
-    gap: 10px;
+    gap: 0.75rem;
     align-items: center;
     flex-wrap: wrap;
   }
 
   .path-label {
-    color: #cfd9e9;
-    opacity: 0.85;
+    color: var(--ink-faint);
     word-break: break-all;
-    font-size: 13px;
+    font-size: 0.84rem;
   }
 
   .form-error {
-    margin: 10px 0 0;
-    color: #ffb4a2;
+    margin: 0.75rem 0 0;
+    color: var(--danger);
     font-weight: 600;
   }
 
   .toast {
     position: fixed;
-    top: 24px;
-    right: 24px;
+    top: 1.2rem;
+    right: 1.2rem;
     z-index: 120;
-    min-width: 240px;
-    max-width: min(360px, calc(100vw - 32px));
-    padding: 14px 16px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    color: #eef6ff;
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+    min-width: 15rem;
+    max-width: min(22rem, calc(100vw - 2rem));
+    padding: 0.95rem 1rem;
+    border-radius: calc(var(--radius-sm) - 2px);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    background: var(--popover-surface);
+    box-shadow: var(--shadow-sm);
     backdrop-filter: blur(12px);
-    animation: toast-in 180ms ease-out;
+    animation: toast-in 180ms cubic-bezier(.19,1,.22,1);
   }
 
   .toast--info {
-    background: linear-gradient(135deg, rgba(20, 45, 73, 0.94), rgba(30, 74, 109, 0.94));
-    border-color: rgba(90, 209, 255, 0.24);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 14%, var(--surface-strong)),
+      color-mix(in srgb, var(--accent) 8%, var(--surface))
+    );
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
   }
 
   .toast--success {
-    background: linear-gradient(135deg, rgba(18, 55, 34, 0.95), rgba(31, 88, 52, 0.95));
-    border-color: rgba(113, 201, 118, 0.28);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--success) 18%, var(--surface-strong)),
+      color-mix(in srgb, var(--success) 10%, var(--surface))
+    );
+    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
   }
 
   .toast--error {
-    background: linear-gradient(135deg, rgba(83, 25, 35, 0.95), rgba(125, 38, 56, 0.95));
-    border-color: rgba(255, 128, 154, 0.28);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--danger) 18%, var(--surface-strong)),
+      color-mix(in srgb, var(--danger) 10%, var(--surface))
+    );
+    border-color: color-mix(in srgb, var(--danger) 24%, var(--border));
   }
 
   @keyframes toast-in {
     from {
       opacity: 0;
-      transform: translate3d(16px, -8px, 0);
+      transform: translate3d(1rem, -0.5rem, 0);
     }
     to {
       opacity: 1;
@@ -554,13 +659,13 @@
 
   @media (max-width: 720px) {
     main.app-shell {
-      padding: 22px 16px 36px;
+      padding: 0.9rem 0.75rem 1.6rem;
     }
 
     .toast {
-      top: 16px;
-      right: 16px;
-      left: 16px;
+      top: 1rem;
+      right: 1rem;
+      left: 1rem;
       min-width: 0;
       max-width: none;
     }

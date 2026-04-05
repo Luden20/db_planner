@@ -26,8 +26,10 @@
   let activeIndex = 0;
   let lastSyncedFocusId: number | null = null;
   let currentPrincipalEntity: utils.Entity | null = null;
+  let stickySentinel: HTMLDivElement | null = null;
   let stickyStack: HTMLDivElement | null = null;
   let stickyStackHeight = 0;
+  let stickyStackPinned = false;
   const relationOptions = ["", "1:1", "N:1", "1:N", "N:N"];
   let updating = false;
   let relationOverrides: Record<string, string> = {};
@@ -85,9 +87,19 @@
     stickyStackHeight = stickyStack?.offsetHeight ?? 0;
   };
 
+  const syncStickyState = () => {
+    if (!stickySentinel) {
+      stickyStackPinned = false;
+      return;
+    }
+
+    stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
+  };
+
   onMount(() => {
     load();
     syncStickyStackHeight();
+    syncStickyState();
     if (typeof ResizeObserver === "undefined" || !stickyStack) {
       return;
     }
@@ -116,6 +128,9 @@
   }
   $: if (stickyStack) {
     syncStickyStackHeight();
+  }
+  $: if (stickySentinel) {
+    syncStickyState();
   }
 
   const nextSlide = () => {
@@ -288,10 +303,19 @@
   };
 </script>
 
-<svelte:window on:click={closeRelationMenu} on:keydown={handleWindowKeydown} on:scroll={closeRelationMenu}/>
+<svelte:window
+  on:click={closeRelationMenu}
+  on:keydown={handleWindowKeydown}
+  on:scroll={() => {
+    closeRelationMenu();
+    syncStickyState();
+  }}
+  on:resize={syncStickyState}
+/>
 
 <section class="relations-tab" style={`--relations-sticky-total-height: ${stickyStackHeight}px;`}>
-  <div class="sticky-stack" bind:this={stickyStack}>
+  <div class="sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
+  <div class:sticky-stack={true} class:sticky-stack--pinned={stickyStackPinned} bind:this={stickyStack}>
     <div class="tab-toolbar">
       <div>
         <p class="label">Relaciones</p>
@@ -299,10 +323,10 @@
       </div>
       <div class="toolbar-actions">
         <div class="view-jumps">
-          <button class="jump-btn" on:click={() => jumpToTab("entities")} disabled={!comb.length}>
+          <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={!comb.length}>
             Ir a definicion
           </button>
-          <button class="jump-btn" on:click={() => jumpToTab("tertiary")} disabled={!comb.length}>
+          <button class="control control--accent" on:click={() => jumpToTab("tertiary")} disabled={!comb.length}>
             Ir a atributos
           </button>
         </div>
@@ -317,8 +341,16 @@
           {/each}
         </select>
         <div class="entity-nav">
-          <button class="nav-btn" on:click={prevSlide} aria-label="Entidad anterior" disabled={comb.length <= 1}>&lt;</button>
-          <button class="nav-btn" on:click={nextSlide} aria-label="Entidad siguiente" disabled={comb.length <= 1}>&gt;</button>
+          <button class="control control--icon control--soft" on:click={prevSlide} aria-label="Entidad anterior" disabled={comb.length <= 1}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
+            </svg>
+          </button>
+          <button class="control control--icon control--soft" on:click={nextSlide} aria-label="Entidad siguiente" disabled={comb.length <= 1}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -348,8 +380,7 @@
             }}
           />
           <button
-            class:approve-btn={true}
-            class:approve-btn--approved={isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
+            class={`control control--success ${isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? 'control--active' : ''}`}
             on:click={togglePrincipalApproval}
             disabled={updating}
           >
@@ -438,10 +469,10 @@
     on:keydown|stopPropagation
   >
     <p class="context-title">{relationMenu.principalName} -> {relationMenu.targetName}</p>
-    <button class="context-item context-item--accent" on:click={goToRelatedEntityAttributes}>
+    <button class="menu-action control control--sm control--block control--accent" on:click={goToRelatedEntityAttributes}>
       Ir a atributos
     </button>
-    <button class="context-item" on:click={goToRelatedEntityRelations}>
+    <button class="menu-action control control--sm control--block control--ghost" on:click={goToRelatedEntityRelations}>
       Ir a esta relacion
     </button>
   </div>
@@ -456,12 +487,20 @@
   }
 
   .sticky-stack {
-    position: sticky;
-    top: var(--relations-sticky-top);
     z-index: 8;
     display: grid;
     gap: var(--relations-sticky-gap);
     margin-bottom: 18px;
+  }
+
+  .sticky-stack--pinned {
+    position: sticky;
+    top: 0;
+  }
+
+  .sticky-sentinel {
+    height: 1px;
+    margin-top: -1px;
   }
 
   .tab-toolbar {
@@ -493,34 +532,6 @@
     flex-wrap: wrap;
     justify-content: stretch;
     flex: 1 1 320px;
-  }
-
-  .jump-btn {
-    border: 1px solid rgba(90, 209, 255, 0.22);
-    background: rgba(90, 209, 255, 0.1);
-    color: #dff5ff;
-    border-radius: 10px;
-    padding: 14px 16px;
-    min-height: 56px;
-    flex: 1 1 0;
-    font-size: 18px;
-    font-weight: 700;
-    text-align: center;
-    cursor: pointer;
-    transition: background 140ms ease, transform 120ms ease, opacity 120ms ease;
-  }
-
-  .jump-btn:hover:enabled {
-    background: rgba(90, 209, 255, 0.18);
-  }
-
-  .jump-btn:active:enabled {
-    transform: translateY(1px);
-  }
-
-  .jump-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .entity-select {
@@ -562,27 +573,6 @@
 
   .slide-shell {
     display: block;
-  }
-
-  .nav-btn {
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.08);
-    color: #d9e4f5;
-    border-radius: 12px;
-    height: 48px;
-    width: 52px;
-    cursor: pointer;
-    transition: background 150ms ease, transform 120ms ease;
-  }
-
-  .nav-btn:hover:enabled {
-    background: rgba(255, 255, 255, 0.12);
-    transform: translateY(-1px);
-  }
-
-  .nav-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
   }
 
   .slide {
@@ -841,29 +831,6 @@
     box-shadow: 0 0 0 2px rgba(90, 209, 255, 0.22);
   }
 
-  .approve-btn {
-    border: 1px solid rgba(121, 205, 126, 0.32);
-    background: rgba(48, 83, 52, 0.32);
-    color: #dff7df;
-    border-radius: 10px;
-    padding: 10px 12px;
-    cursor: pointer;
-    transition: background 140ms ease, transform 120ms ease;
-  }
-
-  .approve-btn:hover:enabled {
-    background: rgba(76, 175, 80, 0.28);
-  }
-
-  .approve-btn--approved {
-    background: rgba(76, 175, 80, 0.18);
-  }
-
-  .approve-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
   .context-menu {
     position: fixed;
     z-index: 60;
@@ -886,31 +853,6 @@
     text-transform: uppercase;
   }
 
-  .context-item {
-    width: 100%;
-    border: 0;
-    border-radius: 10px;
-    padding: 11px 12px;
-    text-align: left;
-    background: rgba(255, 255, 255, 0.05);
-    color: #e8edf7;
-    cursor: pointer;
-    transition: background 140ms ease, transform 120ms ease;
-  }
-
-  .context-item:hover {
-    background: rgba(90, 209, 255, 0.16);
-  }
-
-  .context-item--accent {
-    background: rgba(90, 209, 255, 0.12);
-    border: 1px solid rgba(90, 209, 255, 0.16);
-  }
-
-  .context-item:active {
-    transform: translateY(1px);
-  }
-
   @media (max-width: 720px) {
     .relations-tab {
       --relations-sticky-gap: 0px;
@@ -929,10 +871,6 @@
       width: 100%;
     }
 
-    .jump-btn {
-      flex-basis: 100%;
-    }
-
     .entity-select {
       min-width: 0;
       width: 100%;
@@ -943,9 +881,147 @@
       align-items: stretch;
     }
 
-    .nav-btn {
-      width: 40px;
-      height: 44px;
-    }
+  }
+
+  .tab-toolbar {
+    padding: 1.05rem 1.1rem;
+    border: 1px solid var(--border);
+    background: var(--panel-surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .label,
+  .mini-label,
+  .context-title {
+    color: var(--accent);
+    letter-spacing: 0.14em;
+  }
+
+  .label,
+  .mini-label {
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+
+  .muted,
+  .entity-description,
+  .counter {
+    color: var(--ink-faint);
+    opacity: 1;
+  }
+
+  .entity-select,
+  .relation-select {
+    border-color: var(--border);
+    background: var(--field-surface);
+    color: var(--ink);
+    box-shadow: none;
+  }
+
+  .entity-select:focus,
+  .relation-select:focus {
+    border-color: var(--focus-border);
+    box-shadow: var(--focus-ring);
+  }
+
+  .slide-head {
+    background: var(--panel-surface-strong);
+    border-color: var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .slide-head--approved {
+    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+    background: var(--panel-surface-success);
+  }
+
+  .slide-head h3,
+  .relation-name-cell,
+  .entities-table {
+    color: var(--ink);
+  }
+
+  .status-pill,
+  .pill {
+    background: var(--chip-surface);
+    border-color: var(--line-soft);
+    color: var(--ink-soft);
+  }
+
+  .id-pill {
+    background: var(--chip-accent-surface);
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+    color: var(--accent-strong);
+  }
+
+  .status-pill--approved {
+    background: var(--chip-success-surface);
+    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+    color: var(--success);
+  }
+
+  .slide {
+    background: var(--panel-surface-strong);
+    border-color: var(--border);
+    border-radius: calc(var(--radius-md) - 4px);
+  }
+
+  .slide--approved {
+    border-color: rgba(61, 114, 81, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(61, 114, 81, 0.08);
+  }
+
+  .table-wrapper {
+    background: color-mix(in srgb, var(--surface-strong) 68%, transparent);
+    border-color: transparent;
+  }
+
+  .entities-table tbody tr:nth-child(odd),
+  .entities-table tbody tr:nth-child(even) {
+    background: transparent;
+  }
+
+  .entities-table tbody tr.approved-row {
+    background: var(--success-soft);
+  }
+
+  .entities-table tbody tr:hover,
+  .entities-table tbody tr.relation-row-menu-open {
+    background: var(--hover-soft);
+  }
+
+  .muted-row td {
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    color: var(--ink-faint);
+  }
+
+  .info-trigger {
+    border-color: var(--line-soft);
+    background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+    color: var(--ink-faint);
+  }
+
+  .info-trigger:hover,
+  .info-trigger:focus-visible {
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  }
+
+  .relation-tooltip {
+    background: var(--popover-surface);
+    border-color: var(--border);
+    color: var(--ink-soft);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .counter {
+    border-color: var(--line-soft);
+    background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
+  }
+
+  .context-menu {
+    border-color: var(--border);
+    background: var(--popover-surface);
+    box-shadow: var(--shadow-sm);
   }
 </style>

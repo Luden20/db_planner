@@ -1,26 +1,385 @@
+:root {
+  color-scheme: light;
+  font-family: "Nunito", "Segoe UI", sans-serif;
+  --font-body: "Nunito", "Segoe UI", sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --bg: #efe9df;
+  --bg-muted: #e4dbcd;
+  --surface: rgba(255, 252, 247, 0.84);
+  --surface-strong: #fbf8f2;
+  --surface-quiet: #f3ece2;
+  --ink: #17181c;
+  --ink-soft: #4f555d;
+  --ink-faint: #6e747d;
+  --border: rgba(28, 31, 35, 0.12);
+  --border-strong: rgba(28, 31, 35, 0.2);
+  --accent: #1e5f66;
+  --accent-strong: #17464c;
+  --accent-soft: rgba(30, 95, 102, 0.1);
+  --success: #3d7251;
+  --success-soft: rgba(61, 114, 81, 0.12);
+  --danger: #984f42;
+  --danger-soft: rgba(152, 79, 66, 0.12);
+  --shadow-sm: 0 14px 30px rgba(63, 53, 35, 0.08);
+  --shadow-lg: 0 28px 70px rgba(63, 53, 35, 0.14);
+  --radius-sm: 16px;
+  --radius-md: 22px;
+  --radius-lg: 30px;
+  --bg-top: #f6f1e8;
+  --bg-middle: #eee5d8;
+  --bg-bottom: #e7ddcf;
+  --grid-line: rgba(23, 24, 28, 0.035);
+  --ambient-glow: rgba(23, 70, 76, 0.15);
+  --selection: rgba(30, 95, 102, 0.18);
+  --panel-surface: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-strong) 94%, transparent),
+    color-mix(in srgb, var(--bg-muted) 70%, transparent)
+  );
+  --panel-surface-strong: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-strong) 90%, transparent),
+    color-mix(in srgb, var(--surface) 86%, transparent)
+  );
+  --panel-surface-success: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--success) 16%, var(--surface-strong)),
+    color-mix(in srgb, var(--success) 10%, var(--surface))
+  );
+  --panel-surface-soft: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+  --field-surface: color-mix(in srgb, var(--surface-strong) 84%, transparent);
+  --field-surface-focus: color-mix(in srgb, var(--surface-strong) 96%, transparent);
+  --chip-surface: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+  --chip-success-surface: color-mix(in srgb, var(--success) 18%, var(--surface-strong));
+  --chip-accent-surface: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
+  --popover-surface: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-strong) 97%, transparent),
+    color-mix(in srgb, var(--surface-quiet) 92%, transparent)
+  );
+  --control-base-surface: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+  --control-soft-surface: color-mix(in srgb, var(--surface-strong) 90%, transparent);
+  --control-ghost-surface: color-mix(in srgb, var(--surface) 86%, transparent);
+  --action-strong-surface: #24343a;
+  --action-strong-border: color-mix(in srgb, var(--accent) 28%, #162126);
+  --action-strong-ink: #f7f3ed;
+  --line-soft: color-mix(in srgb, var(--ink) 10%, transparent);
+  --line-faint: color-mix(in srgb, var(--ink) 6%, transparent);
+  --hover-soft: color-mix(in srgb, var(--ink) 4%, transparent);
+  --hover-accent: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --hover-success: color-mix(in srgb, var(--success) 16%, var(--surface));
+  --focus-border: color-mix(in srgb, var(--accent) 34%, var(--border));
+  --focus-ring: 0 0 0 0.22rem color-mix(in srgb, var(--accent) 18%, transparent);
+  --overlay-scrim: rgba(42, 36, 29, 0.34);
+  --surface-highlight: inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #18191d;
+  --bg-muted: #22242a;
+  --surface: rgba(31, 34, 39, 0.84);
+  --surface-strong: #262a31;
+  --surface-quiet: #20242b;
+  --ink: #f4efe7;
+  --ink-soft: #cdc5b7;
+  --ink-faint: #9f988d;
+  --border: rgba(245, 239, 231, 0.1);
+  --border-strong: rgba(245, 239, 231, 0.18);
+  --accent: #8db9bd;
+  --accent-strong: #d0edef;
+  --accent-soft: rgba(141, 185, 189, 0.12);
+  --success: #98c5a3;
+  --success-soft: rgba(152, 197, 163, 0.12);
+  --danger: #d7a093;
+  --danger-soft: rgba(215, 160, 147, 0.12);
+  --shadow-sm: 0 18px 34px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 34px 80px rgba(0, 0, 0, 0.38);
+  --bg-top: #202228;
+  --bg-middle: #17191e;
+  --bg-bottom: #101116;
+  --grid-line: rgba(244, 239, 231, 0.05);
+  --ambient-glow: rgba(141, 185, 189, 0.12);
+  --selection: rgba(141, 185, 189, 0.22);
+  --panel-surface: linear-gradient(
+    180deg,
+    color-mix(in srgb, #2a2f36 96%, transparent),
+    color-mix(in srgb, #1f2329 94%, transparent)
+  );
+  --panel-surface-strong: linear-gradient(
+    180deg,
+    color-mix(in srgb, #2b3038 98%, transparent),
+    color-mix(in srgb, #20242b 96%, transparent)
+  );
+  --panel-surface-success: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--success) 14%, #2a3032),
+    color-mix(in srgb, var(--success) 10%, #202427)
+  );
+  --panel-surface-soft: color-mix(in srgb, #262b32 90%, transparent);
+  --field-surface: color-mix(in srgb, #252a31 96%, transparent);
+  --field-surface-focus: color-mix(in srgb, #2b3138 96%, var(--accent) 4%);
+  --chip-surface: color-mix(in srgb, #2a3037 92%, transparent);
+  --chip-success-surface: color-mix(in srgb, var(--success) 16%, #28302d);
+  --chip-accent-surface: color-mix(in srgb, var(--accent) 16%, #273036);
+  --popover-surface: linear-gradient(
+    180deg,
+    color-mix(in srgb, #2b3038 98%, transparent),
+    color-mix(in srgb, #1d2128 96%, transparent)
+  );
+  --control-base-surface: color-mix(in srgb, #2c3139 94%, transparent);
+  --control-soft-surface: color-mix(in srgb, #313740 94%, transparent);
+  --control-ghost-surface: color-mix(in srgb, #262b33 92%, transparent);
+  --action-strong-surface: #334850;
+  --action-strong-border: color-mix(in srgb, var(--accent) 34%, #425962);
+  --action-strong-ink: #f3f7f6;
+  --overlay-scrim: rgba(9, 10, 13, 0.58);
+  --surface-highlight: inset 0 1px 0 color-mix(in srgb, white 9%, transparent);
+}
+
 html {
-    background-color: rgba(27, 38, 54, 1);
-    text-align: center;
-    color: white;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--surface-strong) 88%, transparent), transparent 28%),
+    radial-gradient(circle at 85% 12%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 24%),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-middle) 48%, var(--bg-bottom) 100%);
+  color: var(--ink);
+  text-align: left;
+  transition: background 200ms ease, color 200ms ease;
 }
 
 body {
-    margin: 0;
-    color: white;
-    font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
-    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+  position: relative;
+  overflow-x: hidden;
 }
 
-@font-face {
-    font-family: "Nunito";
-    font-style: normal;
-    font-weight: 400;
-    src: local(""),
-    url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at center, black 42%, transparent 92%);
+  opacity: 0.32;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: auto -18vw -20vh auto;
+  width: 48vw;
+  height: 48vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ambient-glow), transparent 70%);
+  filter: blur(20px);
+  pointer-events: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+p,
+button,
+input,
+textarea,
+select {
+  font-family: var(--font-body);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+.control {
+  --control-surface: var(--control-base-surface);
+  --control-border: color-mix(in srgb, var(--ink) 10%, transparent);
+  --control-ink: var(--ink);
+  --control-shadow: 0 12px 22px color-mix(in srgb, var(--ink) 9%, transparent);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 2.85rem;
+  padding: 0 0.95rem;
+  border-radius: 1rem;
+  border: 1px solid var(--control-border);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--control-surface) 100%, white 0%),
+    color-mix(in srgb, var(--control-surface) 88%, var(--bg-muted) 12%)
+  );
+  color: var(--control-ink);
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  box-shadow: var(--control-shadow), inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+  cursor: pointer;
+  transition:
+    transform 150ms cubic-bezier(.19, 1, .22, 1),
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+
+.control:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--control-border) 72%, var(--border-strong));
+  box-shadow: 0 16px 26px color-mix(in srgb, var(--ink) 12%, transparent), inset 0 1px 0 color-mix(in srgb, white 36%, transparent);
+}
+
+.control:active {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: 0 8px 14px color-mix(in srgb, var(--ink) 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 20%, transparent);
+}
+
+.control:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.control svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+.control--sm {
+  min-height: 2.2rem;
+  padding: 0 0.78rem;
+  font-size: 0.82rem;
+  border-radius: 0.9rem;
+}
+
+.control--icon {
+  width: 2.85rem;
+  min-width: 2.85rem;
+  padding: 0;
+  border-radius: 0.95rem;
+}
+
+.control--stack {
+  display: grid;
+  justify-items: start;
+  justify-content: start;
+  align-content: center;
+  gap: 0.2rem;
+  min-height: 5rem;
+  padding: 0.88rem 0.96rem;
+  text-align: left;
+  line-height: 1.15;
+  border-radius: 1.2rem;
+}
+
+.control--block {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.control--soft {
+  --control-surface: var(--control-soft-surface);
+}
+
+.control--ghost {
+  --control-surface: var(--control-ghost-surface);
+  --control-shadow: 0 8px 16px color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.control--accent {
+  --control-surface: color-mix(in srgb, var(--accent) 13%, var(--surface-strong));
+  --control-border: color-mix(in srgb, var(--accent) 22%, var(--border));
+  --control-ink: var(--accent-strong);
+}
+
+.control--success {
+  --control-surface: color-mix(in srgb, var(--success) 14%, var(--surface-strong));
+  --control-border: color-mix(in srgb, var(--success) 24%, var(--border));
+  --control-ink: var(--success);
+}
+
+.control--danger {
+  --control-surface: color-mix(in srgb, var(--danger) 13%, var(--surface-strong));
+  --control-border: color-mix(in srgb, var(--danger) 22%, var(--border));
+  --control-ink: var(--danger);
+}
+
+.control--primary {
+  --control-surface: var(--action-strong-surface);
+  --control-border: var(--action-strong-border);
+  --control-ink: var(--action-strong-ink);
+  --control-shadow: 0 18px 26px color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+.control--active {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+  box-shadow:
+    0 18px 28px color-mix(in srgb, var(--ink) 12%, transparent),
+    0 0 0 0.18rem color-mix(in srgb, var(--accent) 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 36%, transparent);
+}
+
+.control__meta {
+  color: var(--ink-faint);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.control--primary .control__meta {
+  color: color-mix(in srgb, var(--action-strong-ink) 74%, transparent);
+}
+
+.control--danger .control__meta {
+  color: color-mix(in srgb, var(--danger) 74%, var(--surface));
+}
+
+.control--success .control__meta {
+  color: color-mix(in srgb, var(--success) 74%, var(--surface));
 }
 
 #app {
-    height: 100vh;
-    text-align: center;
+  min-height: 100vh;
+  text-align: left;
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control {
+    transition: none;
+  }
 }

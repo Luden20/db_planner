@@ -320,7 +320,7 @@
       on:keydown={handleSearchKeydown}
     />
     {#if searchQuery}
-      <button class="search-clear" on:click={clearSearch} aria-label="Limpiar búsqueda">
+      <button class="control control--sm control--ghost" on:click={clearSearch} aria-label="Limpiar búsqueda">
         Limpiar
       </button>
     {/if}
@@ -332,11 +332,15 @@
         <span class="search-count">
           {activeSearchMatchIndex + 1} de {searchMatchIds.length}
         </span>
-        <button class="search-nav" on:click={() => cycleSearchMatch(-1)} aria-label="Coincidencia anterior">
-          &lt;
+        <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(-1)} aria-label="Coincidencia anterior">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
+          </svg>
         </button>
-        <button class="search-nav" on:click={() => cycleSearchMatch(1)} aria-label="Siguiente coincidencia">
-          &gt;
+        <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(1)} aria-label="Siguiente coincidencia">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
+          </svg>
         </button>
       {:else}
         <span class="search-empty">Sin coincidencias</span>
@@ -392,8 +396,7 @@
         <td>
           <div class="row-actions">
             <button
-              class:approve-btn={true}
-              class:approve-btn--approved={isApproved(entity)}
+              class={`control control--sm control--success ${isApproved(entity) ? 'control--active' : ''}`}
               on:click={() => toggleEntityApproval(entity)}
             >
               {isApproved(entity) ? "Quitar aprobación" : "Aprobar"}
@@ -416,17 +419,17 @@
     on:keydown|stopPropagation
   >
     <p class="context-title">{contextMenu.entityName}</p>
-    <button class="context-item context-item--accent" on:click={() => handleJumpFromContext("tertiary")}>
+    <button class="menu-action control control--sm control--block control--accent" on:click={() => handleJumpFromContext("tertiary")}>
       Ir a atributos
     </button>
-    <button class="context-item context-item--accent" on:click={() => handleJumpFromContext("relations")}>
+    <button class="menu-action control control--sm control--block control--accent" on:click={() => handleJumpFromContext("relations")}>
       Ir a relaciones
     </button>
     <div class="context-divider"></div>
-    <button class="context-item" on:click={() => handleInsertFromContext("above")}>
+    <button class="menu-action control control--sm control--block control--ghost" on:click={() => handleInsertFromContext("above")}>
       Insertar arriba
     </button>
-    <button class="context-item" on:click={() => handleInsertFromContext("below")}>
+    <button class="menu-action control control--sm control--block control--ghost" on:click={() => handleInsertFromContext("below")}>
       Insertar abajo
     </button>
   </div>
@@ -499,28 +502,6 @@
     border-color: rgba(90, 209, 255, 0.45);
     box-shadow: 0 0 0 3px rgba(90, 209, 255, 0.16);
     background: rgba(12, 20, 34, 0.9);
-  }
-
-  .search-clear,
-  .search-nav {
-    border: 1px solid rgba(90, 209, 255, 0.22);
-    background: rgba(90, 209, 255, 0.1);
-    color: #dff5ff;
-    border-radius: 10px;
-    min-height: 42px;
-    padding: 0 12px;
-    cursor: pointer;
-    transition: background 120ms ease, transform 120ms ease, opacity 120ms ease;
-  }
-
-  .search-clear:hover,
-  .search-nav:hover {
-    background: rgba(90, 209, 255, 0.18);
-  }
-
-  .search-clear:active,
-  .search-nav:active {
-    transform: translateY(1px);
   }
 
   .search-meta {
@@ -642,24 +623,6 @@
     justify-content: center;
   }
 
-  .approve-btn {
-    border: 1px solid rgba(121, 205, 126, 0.32);
-    background: rgba(48, 83, 52, 0.32);
-    color: #dff7df;
-    border-radius: 10px;
-    padding: 9px 12px;
-    cursor: pointer;
-    transition: background 140ms ease, transform 120ms ease;
-  }
-
-  .approve-btn:hover {
-    background: rgba(76, 175, 80, 0.28);
-  }
-
-  .approve-btn--approved {
-    background: rgba(76, 175, 80, 0.18);
-  }
-
   .context-menu {
     position: fixed;
     z-index: 60;
@@ -682,35 +645,10 @@
     text-transform: uppercase;
   }
 
-  .context-item {
-    width: 100%;
-    border: 0;
-    border-radius: 10px;
-    padding: 11px 12px;
-    text-align: left;
-    background: rgba(255, 255, 255, 0.05);
-    color: #e8edf7;
-    cursor: pointer;
-    transition: background 140ms ease, transform 120ms ease;
-  }
-
-  .context-item:hover {
-    background: rgba(90, 209, 255, 0.16);
-  }
-
-  .context-item--accent {
-    background: rgba(90, 209, 255, 0.12);
-    border: 1px solid rgba(90, 209, 255, 0.16);
-  }
-
   .context-divider {
     height: 1px;
     background: rgba(255, 255, 255, 0.08);
     margin: 2px 0;
-  }
-
-  .context-item:active {
-    transform: translateY(1px);
   }
 
   @media (max-width: 720px) {
@@ -725,6 +663,138 @@
 
     .search-field {
       flex-wrap: wrap;
+    }
+  }
+
+  .tab-toolbar {
+    margin-bottom: 1rem;
+    padding: 1.1rem 1.15rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-md) - 4px);
+    background: var(--panel-surface);
+  }
+
+  .label {
+    color: var(--accent);
+    font-size: 0.74rem;
+    letter-spacing: 0.16em;
+    font-weight: 800;
+  }
+
+  .muted {
+    color: var(--ink-faint);
+    opacity: 1;
+  }
+
+  .search-toolbar {
+    padding: 0.95rem 1rem;
+    border-radius: calc(var(--radius-md) - 6px);
+    border: 1px solid var(--border);
+    background: var(--panel-surface-soft);
+  }
+
+  .search-input {
+    border-color: var(--border);
+    background: var(--field-surface);
+    color: var(--ink);
+  }
+
+  .search-input::placeholder {
+    color: var(--ink-faint);
+  }
+
+  .search-input:focus {
+    border-color: var(--focus-border);
+    box-shadow: var(--focus-ring);
+    background: var(--field-surface-focus);
+  }
+
+  .search-count,
+  .search-empty {
+    color: var(--ink-faint);
+  }
+
+  .table-wrapper {
+    background: var(--panel-surface-strong);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-md) - 4px);
+    padding: 0.55rem;
+    box-shadow: var(--surface-highlight);
+  }
+
+  .entities-table {
+    color: var(--ink);
+  }
+
+  .entities-table thead th {
+    color: var(--ink-faint);
+    border-bottom-color: var(--line-soft);
+    font-size: 0.76rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .entities-table tbody tr:nth-child(odd),
+  .entities-table tbody tr:nth-child(even) {
+    background: transparent;
+  }
+
+  .entities-table tbody tr:hover {
+    background: var(--hover-soft);
+  }
+
+  .entities-table tbody tr.approved:nth-child(odd),
+  .entities-table tbody tr.approved:nth-child(even) {
+    background: var(--success-soft);
+  }
+
+  .entities-table tbody tr.approved:hover {
+    background: var(--hover-success);
+  }
+
+  .entities-table tbody tr.search-match:nth-child(odd),
+  .entities-table tbody tr.search-match:nth-child(even) {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  }
+
+  .entities-table tbody tr.search-match-active:nth-child(odd),
+  .entities-table tbody tr.search-match-active:nth-child(even) {
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .status-pill {
+    background: var(--chip-surface);
+    border-color: var(--line-soft);
+    color: var(--ink-faint);
+  }
+
+  .status-pill--approved {
+    background: var(--chip-success-surface);
+    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+    color: var(--success);
+  }
+
+  .context-menu {
+    border-color: var(--border);
+    background: var(--popover-surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .context-title {
+    color: var(--accent);
+    font-size: 0.74rem;
+    letter-spacing: 0.14em;
+  }
+
+  .context-divider {
+    background: var(--line-soft);
+  }
+
+  @media (max-width: 720px) {
+    .tab-toolbar,
+    .search-toolbar {
+      padding: 0.9rem;
     }
   }
 </style>
