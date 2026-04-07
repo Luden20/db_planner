@@ -4,9 +4,23 @@ import {utils} from '../models';
 
 export function AddAttribute(arg1:number,arg2:string,arg3:string,arg4:string):Promise<void>;
 
+export function AddBigProcess(arg1:string,arg2:string):Promise<void>;
+
 export function AddEntity(arg1:string,arg2:string):Promise<void>;
 
+export function AddProcess(arg1:number,arg2:string,arg3:string):Promise<void>;
+
 export function AddRelation(arg1:number,arg2:number,arg3:string):Promise<void>;
+
+export function AddResource(arg1:number,arg2:number,arg3:number,arg4:number,arg5:string):Promise<void>;
+
+export function AddRole(arg1:string,arg2:string):Promise<void>;
+
+export function AddRoleProcessPermission(arg1:number,arg2:number):Promise<void>;
+
+export function AddRoleTablePermission(arg1:number,arg2:number,arg3:boolean,arg4:boolean,arg5:boolean,arg6:boolean):Promise<void>;
+
+export function AddStep(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
 
 export function CreateExcelPath():Promise<string>;
 
@@ -18,7 +32,21 @@ export function CreateProjectJSONPath():Promise<string>;
 
 export function EditAttribute(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string):Promise<void>;
 
+export function EditBigProcess(arg1:number,arg2:string,arg3:string):Promise<void>;
+
 export function EditEntity(arg1:number,arg2:string,arg3:string):Promise<void>;
+
+export function EditProcess(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
+
+export function EditResource(arg1:number,arg2:number,arg3:number,arg4:number,arg5:number,arg6:string):Promise<void>;
+
+export function EditRole(arg1:number,arg2:string,arg3:string):Promise<void>;
+
+export function EditRoleProcessPermission(arg1:number,arg2:number,arg3:number):Promise<void>;
+
+export function EditRoleTablePermission(arg1:number,arg2:number,arg3:number,arg4:boolean,arg5:boolean,arg6:boolean,arg7:boolean):Promise<void>;
+
+export function EditStep(arg1:number,arg2:number,arg3:number,arg4:string,arg5:string):Promise<void>;
 
 export function EjectProject():Promise<void>;
 
@@ -32,11 +60,19 @@ export function GetCombinatory():Promise<Array<utils.RelationView>>;
 
 export function GetEntity(arg1:number):Promise<utils.Entity>;
 
+export function GetRole(arg1:number):Promise<utils.Role>;
+
 export function MarkEntityStatus(arg1:number,arg2:boolean):Promise<void>;
 
 export function MoveAttribute(arg1:number,arg2:number,arg3:string):Promise<void>;
 
+export function MoveBigProcess(arg1:number,arg2:string):Promise<void>;
+
 export function MoveEntity(arg1:number,arg2:string):Promise<void>;
+
+export function MoveProcess(arg1:number,arg2:number,arg3:string):Promise<void>;
+
+export function MoveStep(arg1:number,arg2:number,arg3:number,arg4:string):Promise<void>;
 
 export function OpenPath(arg1:string):Promise<utils.DbProject>;
 
@@ -44,8 +80,22 @@ export function PickProjectJSON():Promise<string>;
 
 export function RemoveAttribute(arg1:number,arg2:number):Promise<void>;
 
+export function RemoveBigProcess(arg1:number):Promise<void>;
+
 export function RemoveEntity(arg1:number):Promise<void>;
 
+export function RemoveProcess(arg1:number,arg2:number):Promise<void>;
+
 export function RemoveRelation(arg1:number):Promise<void>;
+
+export function RemoveResource(arg1:number,arg2:number,arg3:number,arg4:number):Promise<void>;
+
+export function RemoveRole(arg1:number):Promise<void>;
+
+export function RemoveRoleProcessPermission(arg1:number,arg2:number):Promise<void>;
+
+export function RemoveRoleTablePermission(arg1:number,arg2:number):Promise<void>;
+
+export function RemoveStep(arg1:number,arg2:number,arg3:number):Promise<void>;
 
 export function Save():Promise<void>;

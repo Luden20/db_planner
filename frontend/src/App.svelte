@@ -19,10 +19,11 @@
   import EntitiesTab from './components/EntitiesTab.svelte';
   import RelationsTab from "./components/RelationsTab.svelte";
   import AttributesTab from "./components/AttributesTab.svelte";
-  import GraphTab from "./components/GraphTab.svelte";
+  import FlowsTab from "./components/FlowsTab.svelte";
+  import RolesTab from "./components/RolesTab.svelte";
   import {showToast, toastState} from "./lib/toast";
 
-  type TabKey = 'entities' | 'relations' | 'tertiary' | 'diagram';
+  type TabKey = 'entities' | 'relations' | 'roles' | 'flows' | 'tertiary';
   type ThemeMode = "light" | "dark";
   const THEME_STORAGE_KEY = "db-planner-theme";
 
@@ -272,8 +273,10 @@
         <EntitiesTab entities={data.Entities} onSave={handleRefresh} onJumpTo={handleJumpToEntityTab}/>
       {:else if activeTab === 'relations'}
         <RelationsTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
-      {:else if activeTab === 'diagram'}
-        <GraphTab entities={data.Entities} onJumpTo={handleJumpToEntityTab}/>
+      {:else if activeTab === 'roles'}
+        <RolesTab project={data} entities={data.Entities} onRefresh={handleRefresh}/>
+      {:else if activeTab === 'flows'}
+        <FlowsTab project={data} entities={data.Entities} onRefresh={handleRefresh}/>
       {:else}
         <AttributesTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
       {/if}
@@ -457,6 +460,20 @@
     --btn-border: var(--action-strong-border);
     --btn-ink: var(--action-strong-ink);
     --btn-shadow: 0 18px 30px color-mix(in srgb, var(--ink) 18%, transparent);
+  }
+
+  :global(.btn.accent) {
+    --btn-surface: color-mix(in srgb, var(--accent) 13%, var(--surface-strong));
+    --btn-border: color-mix(in srgb, var(--accent) 22%, var(--border));
+    --btn-ink: var(--accent-strong);
+    --btn-shadow: 0 14px 24px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  :global(.btn.success) {
+    --btn-surface: color-mix(in srgb, var(--success) 14%, var(--surface-strong));
+    --btn-border: color-mix(in srgb, var(--success) 24%, var(--border));
+    --btn-ink: var(--success);
+    --btn-shadow: 0 14px 24px color-mix(in srgb, var(--success) 14%, transparent);
   }
 
   :global(.btn:disabled) {

@@ -281,3 +281,207 @@ func (a *App) MoveEntity(id int, direction string) error {
 	}
 	return nil
 }
+
+func (a *App) AddBigProcess(name string, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.AddBigProcess(name, description)
+}
+
+func (a *App) EditBigProcess(id int, name string, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.EditBigProcess(id, name, description)
+}
+
+func (a *App) RemoveBigProcess(id int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.RemoveBigProcess(id)
+}
+
+func (a *App) MoveBigProcess(id int, direction string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.MoveBigProcess(id, direction)
+}
+
+func (a *App) AddProcess(bigProcessID int, name string, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.AddProcess(bigProcessID, name, description)
+}
+
+func (a *App) EditProcess(bigProcessID int, processID int, name string, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.EditProcess(bigProcessID, processID, name, description)
+}
+
+func (a *App) RemoveProcess(bigProcessID int, processID int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.RemoveProcess(bigProcessID, processID)
+}
+
+func (a *App) MoveProcess(bigProcessID int, processID int, direction string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.MoveProcess(bigProcessID, processID, direction)
+}
+
+func (a *App) AddStep(bigProcessID int, processID int, name string, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.AddStep(bigProcessID, processID, name, description)
+}
+
+func (a *App) EditStep(bigProcessID int, processID int, stepID int, name string, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.EditStep(bigProcessID, processID, stepID, name, description)
+}
+
+func (a *App) RemoveStep(bigProcessID int, processID int, stepID int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.RemoveStep(bigProcessID, processID, stepID)
+}
+
+func (a *App) MoveStep(bigProcessID int, processID int, stepID int, direction string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.MoveStep(bigProcessID, processID, stepID, direction)
+}
+
+func (a *App) AddResource(bigProcessID int, processID int, stepID int, tableID int, role string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.AddResource(bigProcessID, processID, stepID, tableID, role)
+}
+
+func (a *App) EditResource(bigProcessID int, processID int, stepID int, resourceID int, tableID int, role string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.EditResource(bigProcessID, processID, stepID, resourceID, tableID, role)
+}
+
+func (a *App) RemoveResource(bigProcessID int, processID int, stepID int, resourceID int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.RemoveResource(bigProcessID, processID, stepID, resourceID)
+}
+
+func (a *App) GetRole(id int) (*utils.Role, error) {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return nil, err
+	}
+	role := prj.GetRole(id)
+	if role == nil {
+		return nil, fmt.Errorf("role not found")
+	}
+	return role, nil
+}
+
+func (a *App) AddRole(name string, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.AddRole(name, description)
+}
+
+func (a *App) EditRole(id int, name string, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.EditRole(id, name, description)
+}
+
+func (a *App) RemoveRole(id int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.RemoveRole(id)
+}
+
+func (a *App) AddRoleProcessPermission(roleID int, processID int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.AddRoleProcessPermission(roleID, processID)
+}
+
+func (a *App) EditRoleProcessPermission(roleID int, permissionID int, processID int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.EditRoleProcessPermission(roleID, permissionID, processID)
+}
+
+func (a *App) RemoveRoleProcessPermission(roleID int, permissionID int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.RemoveRoleProcessPermission(roleID, permissionID)
+}
+
+func (a *App) AddRoleTablePermission(roleID int, tableID int, insertPermission bool, deletePermission bool, updatePermission bool, viewPermission bool) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.AddRoleTablePermission(roleID, tableID, insertPermission, deletePermission, updatePermission, viewPermission)
+}
+
+func (a *App) EditRoleTablePermission(roleID int, permissionID int, tableID int, insertPermission bool, deletePermission bool, updatePermission bool, viewPermission bool) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.EditRoleTablePermission(roleID, permissionID, tableID, insertPermission, deletePermission, updatePermission, viewPermission)
+}
+
+func (a *App) RemoveRoleTablePermission(roleID int, permissionID int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	return prj.RemoveRoleTablePermission(roleID, permissionID)
+}

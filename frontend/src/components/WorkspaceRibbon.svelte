@@ -1,9 +1,9 @@
 <script lang="ts">
   export let name: string;
   export let entityCount: number;
-  export let activeTab: "entities" | "relations" | "tertiary" | "diagram";
+  export let activeTab: "entities" | "relations" | "roles" | "flows" | "tertiary";
   export let themeMode: "light" | "dark" = "light";
-  export let onSelect: (tab: "entities" | "relations" | "tertiary" | "diagram") => void = () => {};
+  export let onSelect: (tab: "entities" | "relations" | "roles" | "flows" | "tertiary") => void = () => {};
   export let onToggleTheme: () => void = () => {};
   export let onSave: () => Promise<void> = async () => {};
   export let onExport: () => void = () => {};
@@ -13,7 +13,8 @@
   const viewItems = [
     {key: "entities" as const, label: "Entidades", hint: "Base del modelo"},
     {key: "relations" as const, label: "Relaciones", hint: "Cruces y tipos"},
-    {key: "diagram" as const, label: "Diagrama", hint: "Atlas visual"},
+    {key: "roles" as const, label: "Roles", hint: "Matriz de acceso"},
+    {key: "flows" as const, label: "Flujos", hint: "Deck operativo"},
     {key: "tertiary" as const, label: "Atributos", hint: "Detalle por entidad"}
   ];
 </script>
@@ -239,7 +240,7 @@
 
   .view-strip {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.6rem;
   }
 

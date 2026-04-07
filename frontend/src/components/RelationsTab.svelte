@@ -1,5 +1,5 @@
 <script lang="ts">
-  import {onMount} from "svelte";
+  import {onMount, tick} from "svelte";
   import type {utils} from "../../wailsjs/go/models";
   import {AddRelation, GetCombinatory, MarkEntityStatus, RemoveRelation} from "../../wailsjs/go/main/App";
   import CreateEntity from "./forms/CreateEntity.svelte";
@@ -17,6 +17,11 @@
     IdPrincipalEntity: number;
     Relations: RelationRow[];
   };
+  type ViewTransitionDocument = Document & {
+    startViewTransition?: (update: () => void | Promise<void>) => {
+      finished: Promise<void>;
+    };
+  };
 
   export let entities: utils.Entity[] = [];
   export let onRefresh: () => Promise<void> = async () => {};
@@ -30,6 +35,8 @@
   let stickyStack: HTMLDivElement | null = null;
   let stickyStackHeight = 0;
   let stickyStackPinned = false;
+  let currentRelationCount = 0;
+  let approvedRelationCount = 0;
   const relationOptions = ["", "1:1", "N:1", "1:N", "N:N"];
   let updating = false;
   let relationOverrides: Record<string, string> = {};
@@ -87,6 +94,25 @@
     stickyStackHeight = stickyStack?.offsetHeight ?? 0;
   };
 
+  const prefersReducedMotion = () =>
+    typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const runRelationTransition = async (update: () => void | Promise<void>) => {
+    const doc = typeof document !== "undefined" ? (document as ViewTransitionDocument) : null;
+    if (doc?.startViewTransition && !prefersReducedMotion()) {
+      try {
+        const transition = doc.startViewTransition(update);
+        await transition.finished;
+        return;
+      } catch (err) {
+        console.warn("No se pudo aplicar la transicion de relaciones:", err);
+      }
+    }
+    await update();
+  };
+
   const syncStickyState = () => {
     if (!stickySentinel) {
       stickyStackPinned = false;
@@ -119,10 +145,12 @@
   }
 
   $: if (comb.length && focusEntityId !== null && focusEntityId !== lastSyncedFocusId) {
-    syncFocusedEntity();
+    void syncFocusedEntity();
   }
 
   $: currentPrincipalEntity = entities.find(entity => entity.Id === comb[activeIndex]?.IdPrincipalEntity) ?? null;
+  $: currentRelationCount = comb[activeIndex]?.Relations?.filter(relation => Boolean(relation.Relation)).length ?? 0;
+  $: approvedRelationCount = comb[activeIndex]?.Relations?.filter(relation => isApprovedEntity(relation.IdEntity2)).length ?? 0;
   $: if (relationMenu.open && relationMenu.principalId !== comb[activeIndex]?.IdPrincipalEntity) {
     closeRelationMenu();
   }
@@ -133,36 +161,46 @@
     syncStickyState();
   }
 
-  const nextSlide = () => {
-    closeRelationMenu();
-    if (!comb.length) return;
-    activeIndex = (activeIndex + 1) % comb.length;
+  const selectPrincipalIndex = async (nextIndex: number) => {
+    if (!comb.length || nextIndex < 0 || nextIndex >= comb.length) {
+      return;
+    }
+    await runRelationTransition(async () => {
+      activeIndex = nextIndex;
+      await tick();
+    });
   };
 
-  const prevSlide = () => {
+  const nextSlide = async () => {
     closeRelationMenu();
     if (!comb.length) return;
-    activeIndex = activeIndex === 0 ? comb.length - 1 : activeIndex - 1;
+    await selectPrincipalIndex((activeIndex + 1) % comb.length);
   };
 
-  const handlePrincipalSelectChange = (event: Event) => {
+  const prevSlide = async () => {
+    closeRelationMenu();
+    if (!comb.length) return;
+    await selectPrincipalIndex(activeIndex === 0 ? comb.length - 1 : activeIndex - 1);
+  };
+
+  const handlePrincipalSelectChange = async (event: Event) => {
     closeRelationMenu();
     const target = event.target as HTMLSelectElement;
     const nextId = Number(target?.value ?? 0);
     const nextIndex = comb.findIndex(view => view.IdPrincipalEntity === nextId);
     if (nextIndex !== -1) {
-      activeIndex = nextIndex;
+      await selectPrincipalIndex(nextIndex);
     }
   };
 
-  const syncFocusedEntity = () => {
+  const syncFocusedEntity = async () => {
     if (!comb.length || focusEntityId === null) {
       return;
     }
 
     const nextIndex = comb.findIndex(view => view.IdPrincipalEntity === focusEntityId);
     if (nextIndex !== -1) {
-      activeIndex = nextIndex;
+      await selectPrincipalIndex(nextIndex);
     }
     lastSyncedFocusId = focusEntityId;
   };
@@ -213,7 +251,7 @@
     }
   };
 
-  const goToRelatedEntityRelations = () => {
+  const goToRelatedEntityRelations = async () => {
     if (relationMenu.targetId === null) {
       return;
     }
@@ -223,7 +261,7 @@
       showToast("No se pudo abrir esa relación.", "error");
       return;
     }
-    activeIndex = nextIndex;
+    await selectPrincipalIndex(nextIndex);
     closeRelationMenu();
   };
 
@@ -313,15 +351,20 @@
   on:resize={syncStickyState}
 />
 
-<section class="relations-tab" style={`--relations-sticky-total-height: ${stickyStackHeight}px;`}>
+<section class="relations-tab relations-studio" style={`--relations-sticky-total-height: ${stickyStackHeight}px;`}>
   <div class="sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
   <div class:sticky-stack={true} class:sticky-stack--pinned={stickyStackPinned} bind:this={stickyStack}>
-    <div class="tab-toolbar">
-      <div>
+    <div class="tab-toolbar relations-toolbar">
+      <div class="relations-toolbar__copy">
         <p class="label">Relaciones</p>
-        <p class="muted">Explora relaciones por entidad principal. Cada slide se recorre con las flechas.</p>
+        <p class="muted">Recorre el combinatorio por entidad principal y ajusta el cruce sin perder contexto.</p>
       </div>
-      <div class="toolbar-actions">
+      <div class="relations-toolbar__meta">
+        <span class="studio-chip">{comb.length} entidades</span>
+        <span class="studio-chip studio-chip--quiet">{currentRelationCount} relaciones activas</span>
+        <span class="studio-chip studio-chip--quiet">{approvedRelationCount} relacionadas aprobadas</span>
+      </div>
+      <div class="toolbar-actions relations-toolbar__actions">
         <div class="view-jumps">
           <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={!comb.length}>
             Ir a definicion
@@ -355,109 +398,125 @@
       </div>
     </div>
 
-    {#if comb.length !== 0 && comb[activeIndex]}
-      <header class:slide-head={true} class:slide-head--approved={isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}>
-        <div class="slide-head-copy">
-          <p class="label">Entidad principal</p>
-          <div class="entity-title-row">
-            <h3>{comb[activeIndex].PrincipalEntity}</h3>
-            {#if isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
-              <span class="status-pill status-pill--approved">&#10003;</span>
-            {/if}
-          </div>
-          <p class="entity-description">{currentPrincipalEntity?.Description || "Sin definición."}</p>
-        </div>
-        <div class="head-meta head-meta--actions">
-          <div>
-            <p class="mini-label">ID</p>
-            <p class="id-pill">{comb[activeIndex].IdPrincipalEntity}</p>
-          </div>
-          <CreateEntity
-            id={comb[activeIndex].IdPrincipalEntity}
-            onSave={async () => {
-              await load(true);
-              await onRefresh();
-            }}
-          />
-          <button
-            class={`control control--success ${isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? 'control--active' : ''}`}
-            on:click={togglePrincipalApproval}
-            disabled={updating}
-          >
-            {isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "Quitar aprobación" : "Aprobar entidad"}
-          </button>
-        </div>
-      </header>
-    {/if}
   </div>
 
 {#if comb.length === 0}
   <div class="empty-panel">Sin datos de relaciones.</div>
 {:else}
-  <div class="slide-shell">
-    <article class:slide={true} class:slide--approved={isApprovedEntity(comb[activeIndex]?.IdPrincipalEntity)}>
+  <div class="relations-layout">
+    <aside class="relations-deck">
       {#if comb[activeIndex]}
-        <div class="table-wrapper">
-          <table class="entities-table compact">
-            <tbody>
-            {#if comb[activeIndex].Relations && comb[activeIndex].Relations.length > 0}
-              {#each comb[activeIndex].Relations as relation}
-                <tr
-                  class:approved-row={isApprovedEntity(relation.IdEntity2)}
-                  class:relation-row-menu-open={relationMenu.open && relationMenu.targetId === relation.IdEntity2}
-                  on:contextmenu|preventDefault|stopPropagation={(event) => openRelationMenu(relation, event)}
-                >
-                  <td>
-                    <div class="relation-name-cell">
-                      <span>{relation.Entity2}</span>
-                      <span class="relation-info">
-                        <button
-                          type="button"
-                          class="info-trigger"
-                          aria-label="Ayuda de la relación"
-                          on:click|stopPropagation
-                        >
-                          ...
-                        </button>
-                        <span class="relation-tooltip">
-                          {getEntityDefinition(relation.IdEntity2)}
-                        </span>
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    <select
-                      class="relation-select"
-                      bind:value={relation.Relation}
-                      data-principal={relationIdentifiers(relation).principalId}
-                      data-relation-id={relationIdentifiers(relation).relationId}
-                      data-target={relationIdentifiers(relation).targetId}
-                      on:click|stopPropagation
-                      on:change={() => handleRelationChange(relation)}
-                      disabled={updating}
-                    >
-                      {#each relationOptions as option}
-                        <option value={option}>{option || "-"}</option>
-                      {/each}
-                    </select>
-                  </td>
-
-                </tr>
-              {/each}
-            {:else}
-              <tr class="muted-row">
-                <td colspan="5">Sin relaciones para esta entidad.</td>
-              </tr>
-            {/if}
-            </tbody>
-          </table>
-        </div>
+        <header
+          class:slide-head={true}
+          class:slide-head--approved={isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
+          style={`view-transition-name: relation-head-${comb[activeIndex].IdPrincipalEntity};`}
+        >
+          <div class="slide-head-copy">
+            <p class="label">Entidad principal</p>
+            <div class="entity-title-row">
+              <h3>{comb[activeIndex].PrincipalEntity}</h3>
+              {#if isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
+                <span class="status-pill status-pill--approved">&#10003;</span>
+              {/if}
+            </div>
+            <p class="entity-description">{currentPrincipalEntity?.Description || "Sin definición."}</p>
+          </div>
+          <div class="head-meta head-meta--actions">
+            <div>
+              <p class="mini-label">ID</p>
+              <p class="id-pill">{comb[activeIndex].IdPrincipalEntity}</p>
+            </div>
+            <CreateEntity
+              id={comb[activeIndex].IdPrincipalEntity}
+              onSave={async () => {
+                await load(true);
+                await onRefresh();
+              }}
+            />
+            <button
+              class={`control control--success ${isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? 'control--active' : ''}`}
+              on:click={togglePrincipalApproval}
+              disabled={updating}
+            >
+              {isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "Quitar aprobación" : "Aprobar entidad"}
+            </button>
+          </div>
+        </header>
       {/if}
-    </article>
-  </div>
+    </aside>
 
-  <div class="slide-meta">
-    <span class="counter">{activeIndex + 1} / {comb.length}</span>
+    <div class="slide-shell">
+      <article
+        class:slide={true}
+        class:slide--approved={isApprovedEntity(comb[activeIndex]?.IdPrincipalEntity)}
+        style={`view-transition-name: relation-stage-${comb[activeIndex]?.IdPrincipalEntity ?? "empty"};`}
+      >
+        {#if comb[activeIndex]}
+          <div class="slide-panel__head">
+            <div>
+              <p class="label">Matriz activa</p>
+              <p class="muted">Cada fila representa una entidad relacionada. El selector aplica el tipo de cardinalidad.</p>
+            </div>
+            <span class="slide-panel__hint">Edicion directa</span>
+          </div>
+          <div class="table-wrapper">
+            <table class="entities-table compact">
+              <tbody>
+              {#if comb[activeIndex].Relations && comb[activeIndex].Relations.length > 0}
+                {#each comb[activeIndex].Relations as relation}
+                  <tr
+                    class:approved-row={isApprovedEntity(relation.IdEntity2)}
+                    class:relation-row-menu-open={relationMenu.open && relationMenu.targetId === relation.IdEntity2}
+                    on:contextmenu|preventDefault|stopPropagation={(event) => openRelationMenu(relation, event)}
+                  >
+                    <td>
+                      <div class="relation-name-cell">
+                        <span>{relation.Entity2}</span>
+                        <span class="relation-info">
+                          <button
+                            type="button"
+                            class="info-trigger"
+                            aria-label="Ayuda de la relación"
+                            on:click|stopPropagation
+                          >
+                            ...
+                          </button>
+                          <span class="relation-tooltip">
+                            {getEntityDefinition(relation.IdEntity2)}
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <select
+                        class="relation-select"
+                        bind:value={relation.Relation}
+                        data-principal={relationIdentifiers(relation).principalId}
+                        data-relation-id={relationIdentifiers(relation).relationId}
+                        data-target={relationIdentifiers(relation).targetId}
+                        on:click|stopPropagation
+                        on:change={() => handleRelationChange(relation)}
+                        disabled={updating}
+                      >
+                        {#each relationOptions as option}
+                          <option value={option}>{option || "-"}</option>
+                        {/each}
+                      </select>
+                    </td>
+
+                  </tr>
+                {/each}
+              {:else}
+                <tr class="muted-row">
+                  <td colspan="5">Sin relaciones para esta entidad.</td>
+                </tr>
+              {/if}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </article>
+    </div>
   </div>
 {/if}
 
@@ -928,6 +987,8 @@
     background: var(--panel-surface-strong);
     border-color: var(--border);
     box-shadow: var(--shadow-sm);
+    border-top: 1px solid var(--border);
+    border-radius: calc(var(--radius-md) - 4px);
   }
 
   .slide-head--approved {
@@ -1023,5 +1084,159 @@
     border-color: var(--border);
     background: var(--popover-surface);
     box-shadow: var(--shadow-sm);
+  }
+
+  .relations-studio {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .relations-layout {
+    display: grid;
+    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+    align-items: start;
+    gap: 1rem;
+  }
+
+  .relations-deck {
+    display: grid;
+    gap: 1rem;
+    position: sticky;
+    top: calc(var(--relations-sticky-total-height) + 1rem);
+    align-self: start;
+  }
+
+  .relations-toolbar,
+  .slide-shell,
+  .slide-head {
+    position: relative;
+    overflow: clip;
+  }
+
+  .relations-toolbar::before,
+  .slide-shell::before,
+  .slide-head::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: min(220px, 42%);
+    height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 36%, transparent), transparent);
+    pointer-events: none;
+  }
+
+  .relations-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.9rem 1rem;
+  }
+
+  .relations-toolbar__copy {
+    max-width: 38rem;
+  }
+
+  .relations-toolbar__meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  .relations-toolbar__actions {
+    grid-column: 1 / -1;
+  }
+
+  .studio-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.42rem 0.78rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    color: var(--accent-strong);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .studio-chip--quiet {
+    border-color: var(--line-soft);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    color: var(--ink-soft);
+  }
+
+  .slide-shell {
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-lg) - 2px);
+    background:
+      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 34%),
+      var(--panel-surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .slide-panel__head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .slide-panel__hint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 0.8rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+    border: 1px solid var(--line-soft);
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .slide-meta {
+    display: flex;
+    justify-content: center;
+    margin-top: 0;
+  }
+
+  @media (max-width: 720px) {
+    .relations-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .relations-deck {
+      position: static;
+    }
+
+    .relations-toolbar,
+    .slide-panel__head {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+    }
+
+    .relations-toolbar__meta {
+      justify-content: flex-start;
+    }
+
+    .slide-shell {
+      padding: 0.9rem;
+    }
+
+    .slide-panel__hint,
+    .studio-chip {
+      white-space: normal;
+    }
   }
 </style>

@@ -39,6 +39,7 @@
   const AUTO_SCROLL_EDGE_PX = 72;
   const AUTO_SCROLL_STEP = 14;
   const isApproved = (entity: utils.Entity) => entity.Status === true;
+  const approvedCount = () => entities.filter((entity) => isApproved(entity)).length;
   const normalizeSearchText = (value: string) =>
     value
       .normalize("NFD")
@@ -301,115 +302,162 @@
 
 <svelte:window on:click={closeContextMenu} on:keydown={handleWindowKeydown} on:scroll={closeContextMenu}/>
 
-<div class="tab-toolbar">
-  <div>
-    <p class="label">Entidades</p>
-    <p class="muted">Vista general del proyecto. Agrega nuevas entidades desde aquí.</p>
-  </div>
-  <CreateEntity onSave={onSave}/>
-</div>
-
-<div class="search-toolbar">
-  <div class="search-field">
-    <input
-      class="search-input"
-      type="search"
-      bind:value={searchQuery}
-      placeholder="Buscar entidad por nombre o descripción"
-      aria-label="Buscar entidad"
-      on:keydown={handleSearchKeydown}
-    />
-    {#if searchQuery}
-      <button class="control control--sm control--ghost" on:click={clearSearch} aria-label="Limpiar búsqueda">
-        Limpiar
-      </button>
-    {/if}
+<section class="entities-studio">
+  <div class="tab-toolbar tab-toolbar--studio">
+    <div>
+      <p class="label">Entidades</p>
+      <p class="muted">Inventario central del modelo. Busca, aprueba y reordena entidades sin salir del estudio.</p>
+    </div>
+    <div class="entities-toolbar__side">
+      <div class="entities-toolbar__meta">
+        <span class="studio-chip">{entities.length} entidades</span>
+        <span class="studio-chip studio-chip--quiet">{approvedCount()} aprobadas</span>
+        {#if normalizedSearchQuery}
+          <span class="studio-chip studio-chip--quiet">{searchMatchIds.length} coincidencias</span>
+        {/if}
+      </div>
+      <CreateEntity onSave={onSave}/>
+    </div>
   </div>
 
-  <div class="search-meta">
-    {#if normalizedSearchQuery}
-      {#if searchMatchIds.length}
-        <span class="search-count">
-          {activeSearchMatchIndex + 1} de {searchMatchIds.length}
-        </span>
-        <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(-1)} aria-label="Coincidencia anterior">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
-          </svg>
-        </button>
-        <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(1)} aria-label="Siguiente coincidencia">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
-          </svg>
-        </button>
-      {:else}
-        <span class="search-empty">Sin coincidencias</span>
-      {/if}
-    {/if}
-  </div>
-</div>
+  <CreateEntity bind:this={createEntityModal} onSave={onSave} showTrigger={false}/>
 
-<CreateEntity bind:this={createEntityModal} onSave={onSave} showTrigger={false}/>
-
-<div
-  class="table-wrapper"
-  bind:this={tableWrapper}
-  on:dragover={handleTableDragOver}
-  on:dragleave={handleTableDragLeave}
-  on:drop={stopAutoScroll}
->
-  <table class="entities-table">
-    <thead>
-    <tr>
-      <th>Nombre</th>
-      <th>Descripción</th>
-      <th style="width: 240px;">Acciones</th>
-    </tr>
-    </thead>
-
-    <tbody class="draggable-body">
-    {#each entities as entity, index (entity.Id)}
-      <tr
-        class:approved={isApproved(entity)}
-        class:search-match={isSearchMatch(entity.Id)}
-        class:search-match-active={activeSearchMatchId === entity.Id}
-        class:dragging={draggingIndex === index}
-        class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
-        data-entity-row={entity.Id}
-        draggable="true"
-        on:dragstart={(event) => startDrag(index, event)}
-        on:dragover={(event) => handleDragOver(index, event)}
-        on:dragenter={(event) => handleDragOver(index, event)}
-        on:drop={(event) => handleDrop(index, event)}
-        on:dragend={clearDrag}
-        on:contextmenu={(event) => openContextMenu(entity, event)}
-      >
-        <td>
-          <div class="entity-cell">
-            <span>{entity.Name}</span>
-            {#if isApproved(entity)}
-              <span class="status-pill status-pill--approved">&#10003;</span>
+  <div class="entities-layout">
+    <aside class="entities-deck">
+      <div class="search-toolbar search-toolbar--studio">
+        <div class="search-toolbar__copy">
+          <p class="label">Filtro activo</p>
+          <p class="muted">Busca, recorre coincidencias y mantén el foco sobre la fila correcta.</p>
+        </div>
+        <div class="search-toolbar__controls">
+          <div class="search-field">
+            <input
+              class="search-input"
+              type="search"
+              bind:value={searchQuery}
+              placeholder="Buscar entidad por nombre o descripción"
+              aria-label="Buscar entidad"
+              on:keydown={handleSearchKeydown}
+            />
+            {#if searchQuery}
+              <button class="control control--sm control--ghost" on:click={clearSearch} aria-label="Limpiar búsqueda">
+                Limpiar
+              </button>
             {/if}
           </div>
-        </td>
-        <td>{entity.Description}</td>
-        <td>
-          <div class="row-actions">
-            <button
-              class={`control control--sm control--success ${isApproved(entity) ? 'control--active' : ''}`}
-              on:click={() => toggleEntityApproval(entity)}
-            >
-              {isApproved(entity) ? "Quitar aprobación" : "Aprobar"}
-            </button>
-            <CreateEntity onSave={onSave} id={entity.Id}/>
-            <DeleteEntity onSave={onSave} id={entity.Id}/>
+
+          <div class="search-meta">
+            {#if normalizedSearchQuery}
+              {#if searchMatchIds.length}
+                <span class="search-count">
+                  {activeSearchMatchIndex + 1} de {searchMatchIds.length}
+                </span>
+                <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(-1)} aria-label="Coincidencia anterior">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
+                  </svg>
+                </button>
+                <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(1)} aria-label="Siguiente coincidencia">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
+                  </svg>
+                </button>
+              {:else}
+                <span class="search-empty">Sin coincidencias</span>
+              {/if}
+            {/if}
           </div>
-        </td>
-      </tr>
-    {/each}
-    </tbody>
-  </table>
-</div>
+        </div>
+      </div>
+
+      <section class="entities-side-card">
+        <p class="label">Atajos</p>
+        <div class="entities-side-card__stack">
+          <div class="entities-side-stat">
+            <span class="entities-side-stat__value">{entities.length}</span>
+            <span class="entities-side-stat__label">entidades en el inventario</span>
+          </div>
+          <div class="entities-side-stat">
+            <span class="entities-side-stat__value">{approvedCount()}</span>
+            <span class="entities-side-stat__label">listas para seguir en el flujo</span>
+          </div>
+          <p class="muted entities-side-note">Click derecho en una fila para saltar a atributos, relaciones o insertar arriba y abajo.</p>
+        </div>
+      </section>
+    </aside>
+
+    <section class="entities-panel">
+      <div class="entities-panel__head">
+        <div>
+          <p class="label">Inventario</p>
+          <p class="muted">Arrastra filas para reordenar el modelo. Click derecho abre acciones rápidas de contexto.</p>
+        </div>
+        <span class="entities-panel__hint">Reordenamiento directo</span>
+      </div>
+
+      <div
+        class="table-wrapper"
+        bind:this={tableWrapper}
+        on:dragover={handleTableDragOver}
+        on:dragleave={handleTableDragLeave}
+        on:drop={stopAutoScroll}
+      >
+        <table class="entities-table">
+          <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Descripción</th>
+            <th style="width: 240px;">Acciones</th>
+          </tr>
+          </thead>
+
+          <tbody class="draggable-body">
+          {#each entities as entity, index (entity.Id)}
+            <tr
+              class:approved={isApproved(entity)}
+              class:search-match={isSearchMatch(entity.Id)}
+              class:search-match-active={activeSearchMatchId === entity.Id}
+              class:dragging={draggingIndex === index}
+              class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
+              data-entity-row={entity.Id}
+              draggable="true"
+              style={`view-transition-name: entity-row-${entity.Id};`}
+              on:dragstart={(event) => startDrag(index, event)}
+              on:dragover={(event) => handleDragOver(index, event)}
+              on:dragenter={(event) => handleDragOver(index, event)}
+              on:drop={(event) => handleDrop(index, event)}
+              on:dragend={clearDrag}
+              on:contextmenu={(event) => openContextMenu(entity, event)}
+            >
+              <td>
+                <div class="entity-cell">
+                  <span>{entity.Name}</span>
+                  {#if isApproved(entity)}
+                    <span class="status-pill status-pill--approved">&#10003;</span>
+                  {/if}
+                </div>
+              </td>
+              <td>{entity.Description}</td>
+              <td>
+                <div class="row-actions">
+                  <button
+                    class={`control control--sm control--success ${isApproved(entity) ? 'control--active' : ''}`}
+                    on:click={() => toggleEntityApproval(entity)}
+                  >
+                    {isApproved(entity) ? "Quitar aprobación" : "Aprobar"}
+                  </button>
+                  <CreateEntity onSave={onSave} id={entity.Id}/>
+                  <DeleteEntity onSave={onSave} id={entity.Id}/>
+                </div>
+              </td>
+            </tr>
+          {/each}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</section>
 
 {#if contextMenu.open}
   <div
@@ -795,6 +843,203 @@
     .tab-toolbar,
     .search-toolbar {
       padding: 0.9rem;
+    }
+  }
+
+  .entities-studio {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .entities-layout {
+    display: grid;
+    grid-template-columns: minmax(17rem, 21rem) minmax(0, 1fr);
+    align-items: start;
+    gap: 1rem;
+  }
+
+  .entities-deck {
+    display: grid;
+    gap: 1rem;
+    position: sticky;
+    top: 0.9rem;
+  }
+
+  .tab-toolbar--studio,
+  .search-toolbar--studio,
+  .entities-panel,
+  .entities-side-card {
+    position: relative;
+    overflow: clip;
+  }
+
+  .tab-toolbar--studio::before,
+  .search-toolbar--studio::before,
+  .entities-panel::before,
+  .entities-side-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: min(220px, 42%);
+    height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 34%, transparent), transparent);
+    pointer-events: none;
+  }
+
+  .entities-toolbar__side {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+  }
+
+  .entities-toolbar__meta,
+  .search-toolbar__controls {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+  }
+
+  .search-toolbar__copy {
+    max-width: 34rem;
+  }
+
+  .search-toolbar__controls {
+    justify-content: flex-end;
+    flex: 1 1 24rem;
+  }
+
+  .studio-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.42rem 0.78rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    color: var(--accent-strong);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .studio-chip--quiet {
+    border-color: var(--line-soft);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    color: var(--ink-soft);
+  }
+
+  .entities-panel {
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-lg) - 2px);
+    background:
+      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 34%),
+      var(--panel-surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .entities-side-card {
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-lg) - 2px);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent 42%),
+      var(--panel-surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .entities-side-card__stack {
+    display: grid;
+    gap: 0.85rem;
+    margin-top: 0.8rem;
+  }
+
+  .entities-side-stat {
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.85rem 0.9rem;
+    border-radius: calc(var(--radius-md) - 4px);
+    background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
+    border: 1px solid var(--line-soft);
+  }
+
+  .entities-side-stat__value {
+    color: var(--accent-strong);
+    font-size: clamp(1.4rem, 2vw, 1.8rem);
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .entities-side-stat__label,
+  .entities-side-note {
+    color: var(--ink-soft);
+  }
+
+  .entities-side-stat__label {
+    font-size: 0.84rem;
+    line-height: 1.35;
+  }
+
+  .entities-side-note {
+    margin: 0;
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+
+  .entities-panel__head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .entities-panel__hint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 0.8rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+    border: 1px solid var(--line-soft);
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 720px) {
+    .entities-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .entities-deck {
+      position: static;
+    }
+
+    .entities-toolbar__side,
+    .search-toolbar__controls,
+    .entities-panel__head {
+      align-items: stretch;
+      justify-content: flex-start;
+      flex-direction: column;
+    }
+
+    .entities-panel {
+      padding: 0.9rem;
+    }
+
+    .studio-chip,
+    .entities-panel__hint {
+      white-space: normal;
     }
   }
 </style>

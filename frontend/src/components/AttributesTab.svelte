@@ -1,5 +1,5 @@
 <script lang="ts">
-  import {onMount} from "svelte";
+  import {onMount, tick} from "svelte";
   import type {utils} from "../../wailsjs/go/models";
   import {GetCombinatory} from "../../wailsjs/go/main/App";
   import {GetEntity, MarkEntityStatus, MoveAttribute, Save} from "../../wailsjs/go/main/App";
@@ -12,6 +12,11 @@
     type: string;
     label: string;
     items: string[];
+  };
+  type ViewTransitionDocument = Document & {
+    startViewTransition?: (update: () => void | Promise<void>) => {
+      finished: Promise<void>;
+    };
   };
 
   export let entities: utils.Entity[] = [];
@@ -31,6 +36,7 @@
   let autoScrollFrame: number | null = null;
   let autoScrollDirection: -1 | 0 | 1 = 0;
   let approvalUpdating = false;
+  let relationSummaryCount = 0;
 
   const AUTO_SCROLL_EDGE_PX = 72;
   const AUTO_SCROLL_STEP = 14;
@@ -41,6 +47,25 @@
     "N:N": "Muchos a muchos"
   };
   const relationTypeOrder = ["1:1", "1:N", "N:1", "N:N"];
+
+  const prefersReducedMotion = () =>
+    typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const runAttributeTransition = async (update: () => void | Promise<void>) => {
+    const doc = typeof document !== "undefined" ? (document as ViewTransitionDocument) : null;
+    if (doc?.startViewTransition && !prefersReducedMotion()) {
+      try {
+        const transition = doc.startViewTransition(update);
+        await transition.finished;
+        return;
+      } catch (err) {
+        console.warn("No se pudo aplicar la transicion de atributos:", err);
+      }
+    }
+    await update();
+  };
 
   const runAutoScroll = () => {
     if (!tableWrapper || autoScrollDirection === 0) {
@@ -104,13 +129,15 @@
     focusEntityId !== lastSyncedFocusId &&
     entities.some(entity => entity.Id === focusEntityId)
   ) {
-    selectedId = focusEntityId;
+    void selectEntity(focusEntityId);
     lastSyncedFocusId = focusEntityId;
   }
 
   $: if (selectedId !== null && selectedId !== lastLoadedId) {
     loadEntity(selectedId);
   }
+
+  $: relationSummaryCount = relationSummary.reduce((total, group) => total + group.items.length, 0);
 
   const loadEntity = async (id: number) => {
     loading = true;
@@ -138,9 +165,19 @@
     event.dataTransfer?.setData("text/plain", `${index}`);
   };
 
-  const handleSelectChange = (event: Event) => {
+  const selectEntity = async (entityId: number | null) => {
+    if (entityId === null || !entities.some(entity => entity.Id === entityId)) {
+      return;
+    }
+    await runAttributeTransition(async () => {
+      selectedId = entityId;
+      await tick();
+    });
+  };
+
+  const handleSelectChange = async (event: Event) => {
     const target = event.target as HTMLSelectElement;
-    selectedId = Number(target?.value ?? 0);
+    await selectEntity(Number(target?.value ?? 0));
   };
 
   const handleDragOver = (index: number, event: DragEvent) => {
@@ -162,18 +199,18 @@
     stopAutoScroll();
   };
 
-  const nextEntity = () => {
+  const nextEntity = async () => {
     if (!entities.length) return;
     const currentIndex = entities.findIndex((ent) => ent.Id === selectedId);
     const nextIndex = currentIndex === -1 || currentIndex === entities.length - 1 ? 0 : currentIndex + 1;
-    selectedId = entities[nextIndex].Id;
+    await selectEntity(entities[nextIndex].Id);
   };
 
-  const prevEntity = () => {
+  const prevEntity = async () => {
     if (!entities.length) return;
     const currentIndex = entities.findIndex((ent) => ent.Id === selectedId);
     const prevIndex = currentIndex <= 0 ? entities.length - 1 : currentIndex - 1;
-    selectedId = entities[prevIndex].Id;
+    await selectEntity(entities[prevIndex].Id);
   };
 
   const applyReorder = async (from: number, to: number) => {
@@ -288,179 +325,208 @@
   };
 </script>
 
-<div class="tab-toolbar">
-  <div>
-    <p class="label">Atributos</p>
-    <p class="muted">Selecciona una entidad para ver y reordenar sus atributos.</p>
-  </div>
-  <div class="toolbar-actions">
-    <div class="view-jumps">
-      <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={!selectedId}>
-        Ir a definicion
-      </button>
-      <button class="control control--accent" on:click={() => jumpToTab("relations")} disabled={!selectedId}>
-        Ir a combinatorio
-      </button>
+<section class="attributes-studio">
+  <div class="tab-toolbar attributes-toolbar">
+    <div class="attributes-toolbar__copy">
+      <p class="label">Atributos</p>
+      <p class="muted">Recorre la entidad activa, reordena atributos y mantén visible su mapa relacional.</p>
     </div>
-    <AttributeForm
-      entityId={selectedId ?? (entities[0]?.Id ?? 0)}
-      onSaved={async () => {
-        await onRefresh();
-        if (selectedId !== null) {
-          await loadEntity(selectedId);
-        }
-      }}
-    />
-    <select
-      class="entity-select"
-      bind:value={selectedId}
-      on:change={handleSelectChange}
-      disabled={!entities.length}
-    >
-      {#each entities as entity}
-        <option value={entity.Id}>{entity.Name}</option>
-      {/each}
-    </select>
-    <div class="entity-nav">
-      <button class="control control--icon control--soft" on:click={prevEntity} aria-label="Entidad anterior" disabled={entities.length <= 1}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
-        </svg>
-      </button>
-      <button class="control control--icon control--soft" on:click={nextEntity} aria-label="Entidad siguiente" disabled={entities.length <= 1}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
-        </svg>
-      </button>
+    <div class="attributes-toolbar__meta">
+      <span class="studio-chip">{entities.length} entidades</span>
+      <span class="studio-chip studio-chip--quiet">{current?.Attributes?.length ?? 0} atributos</span>
+      <span class="studio-chip studio-chip--quiet">{relationSummaryCount} cruces</span>
     </div>
-  </div>
-</div>
-
-{#if !entities.length}
-  <div class="empty-panel">Crea entidades para gestionar atributos.</div>
-{:else if loading}
-  <div class="empty-panel">Cargando atributos...</div>
-{:else if current}
-  <div class:entity-status-card={true} class:entity-status-card--approved={isApproved(current)}>
-    <div class="entity-primary-content">
-      <p class="banner-title">Entidad seleccionada</p>
-      <div class="entity-status-row">
-        <h3>{current.Name}</h3>
-        {#if isApproved(current)}
-          <span class="status-pill status-pill--approved">&#10003;</span>
-        {:else}
-          <span class="status-pill">Pendiente</span>
-        {/if}
+    <div class="toolbar-actions attributes-toolbar__actions">
+      <div class="view-jumps">
+        <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={!selectedId}>
+          Ir a definicion
+        </button>
+        <button class="control control--accent" on:click={() => jumpToTab("relations")} disabled={!selectedId}>
+          Ir a combinatorio
+        </button>
       </div>
-      <p class="entity-description">{current.Description || "Sin definición."}</p>
-    </div>
-    <div class="entity-card-actions">
-      <CreateEntity
-        id={current.Id}
-        onSave={async () => {
+      <AttributeForm
+        entityId={selectedId ?? (entities[0]?.Id ?? 0)}
+        onSaved={async () => {
           await onRefresh();
-          await loadEntity(current.Id);
+          if (selectedId !== null) {
+            await loadEntity(selectedId);
+          }
         }}
       />
-    </div>
-    <div class="entity-card-actions">
-      <button
-        class={`control control--success ${isApproved(current) ? 'control--active' : ''}`}
-        on:click={toggleCurrentApproval}
-        disabled={approvalUpdating}
+      <select
+        class="entity-select"
+        bind:value={selectedId}
+        on:change={handleSelectChange}
+        disabled={!entities.length}
       >
-        {isApproved(current) ? "Quitar aprobación" : "Aprobar entidad"}
-      </button>
+        {#each entities as entity}
+          <option value={entity.Id}>{entity.Name}</option>
+        {/each}
+      </select>
+      <div class="entity-nav">
+        <button class="control control--icon control--soft" on:click={prevEntity} aria-label="Entidad anterior" disabled={entities.length <= 1}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
+          </svg>
+        </button>
+        <button class="control control--icon control--soft" on:click={nextEntity} aria-label="Entidad siguiente" disabled={entities.length <= 1}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
-  {#if relationSummary.length}
-    <div class:info-banner={true} class:info-banner--approved={isApproved(current)}>
-      <div class="relation-banner-head">
-        <div>
-          <p class="banner-title">Relaciones de esta entidad</p>
-          <p class="relation-banner-copy">Resumen textual de los cruces registrados para esta entidad.</p>
-        </div>
-      </div>
-      <div class="relation-groups">
-        {#each relationSummary as group}
-          <section class="relation-group">
-            <div class="relation-group-head">
-              <span class="relation-group-type">{group.type}</span>
-              <span class="relation-group-label">{group.label}</span>
-            </div>
-            <div class="pill-row">
-              {#each group.items as item}
-                <span class="pill">{item}</span>
-              {/each}
-            </div>
-          </section>
-        {/each}
-      </div>
-    </div>
-  {/if}
-  <div
-    class="table-wrapper frosted"
-    bind:this={tableWrapper}
-    on:dragover={handleTableDragOver}
-    on:dragleave={handleTableDragLeave}
-    on:drop={stopAutoScroll}
-  >
-    <table class="entities-table">
-      <thead>
-      <tr>
-        <th>Nombre</th>
-        <th>Descripción</th>
-        <th style="width: 120px;">Tipo</th>
-        <th style="width: 180px;">Acciones</th>
-      </tr>
-      </thead>
-      <tbody class="draggable-body">
-      {#if !current.Attributes || current.Attributes.length === 0}
-        <tr class="empty-row" draggable="false">
-          <td colspan="4">No hay atributos definidos aún.</td>
-        </tr>
-      {:else}
-        {#each current.Attributes as attribute, index (attribute.Id)}
-          <tr
-            class:dragging={draggingIndex === index}
-            class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
-            draggable="true"
-            on:dragstart={(event) => startDrag(index, event)}
-            on:dragover={(event) => handleDragOver(index, event)}
-            on:dragenter={(event) => handleDragOver(index, event)}
-            on:drop={(event) => handleDrop(index, event)}
-            on:dragend={clearDrag}
+
+  {#if !entities.length}
+    <div class="empty-panel">Crea entidades para gestionar atributos.</div>
+  {:else if loading}
+    <div class="empty-panel">Cargando atributos...</div>
+  {:else if current}
+    <section class="attributes-stage">
+      <div class="attributes-layout">
+        <aside class="attributes-deck">
+          <div
+            class:entity-status-card={true}
+            class:entity-status-card--approved={isApproved(current)}
+            style={`view-transition-name: attribute-entity-${current.Id};`}
           >
-            <td>{attribute.Name}</td>
-            <td>{attribute.Description}</td>
-            <td>{attribute.Type || "Por definir"}</td>
-            <td>
-              <div class="row-actions">
-                <AttributeForm
-                  entityId={current.Id}
-                  attribute={attribute}
-                  onSaved={async () => {
-                    await onRefresh();
-                    await loadEntity(current.Id);
-                  }}
-                />
-                <DeleteAttribute
-                  entityId={current.Id}
-                  attributeId={attribute.Id}
-                  onSaved={async () => {
-                    await onRefresh();
-                    await loadEntity(current.Id);
-                  }}
-                />
+            <div class="entity-primary-content">
+              <p class="banner-title">Entidad seleccionada</p>
+              <div class="entity-status-row">
+                <h3>{current.Name}</h3>
+                {#if isApproved(current)}
+                  <span class="status-pill status-pill--approved">&#10003;</span>
+                {:else}
+                  <span class="status-pill">Pendiente</span>
+                {/if}
               </div>
-            </td>
-          </tr>
-        {/each}
-      {/if}
-      </tbody>
-    </table>
-  </div>
-{/if}
+              <p class="entity-description">{current.Description || "Sin definición."}</p>
+            </div>
+            <div class="entity-card-actions">
+              <CreateEntity
+                id={current.Id}
+                onSave={async () => {
+                  await onRefresh();
+                  await loadEntity(current.Id);
+                }}
+              />
+            </div>
+            <div class="entity-card-actions">
+              <button
+                class={`control control--success ${isApproved(current) ? 'control--active' : ''}`}
+                on:click={toggleCurrentApproval}
+                disabled={approvalUpdating}
+              >
+                {isApproved(current) ? "Quitar aprobación" : "Aprobar entidad"}
+              </button>
+            </div>
+          </div>
+
+          {#if relationSummary.length}
+            <div class:info-banner={true} class:info-banner--approved={isApproved(current)}>
+              <div class="relation-banner-head">
+                <div>
+                  <p class="banner-title">Relaciones de esta entidad</p>
+                  <p class="relation-banner-copy">Resumen textual de los cruces registrados para esta entidad.</p>
+                </div>
+              </div>
+              <div class="relation-groups">
+                {#each relationSummary as group}
+                  <section class="relation-group">
+                    <div class="relation-group-head">
+                      <span class="relation-group-type">{group.type}</span>
+                      <span class="relation-group-label">{group.label}</span>
+                    </div>
+                    <div class="pill-row">
+                      {#each group.items as item}
+                        <span class="pill">{item}</span>
+                      {/each}
+                    </div>
+                  </section>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </aside>
+
+        <section class="attributes-panel" style={`view-transition-name: attribute-table-${current.Id};`}>
+          <div class="attributes-panel__head">
+            <div>
+              <p class="label">Inventario de atributos</p>
+              <p class="muted">Arrastra filas para cambiar el orden natural de la definición.</p>
+            </div>
+            <span class="attributes-panel__hint">Reordenamiento directo</span>
+          </div>
+          <div
+            class="table-wrapper frosted"
+            bind:this={tableWrapper}
+            on:dragover={handleTableDragOver}
+            on:dragleave={handleTableDragLeave}
+            on:drop={stopAutoScroll}
+          >
+            <table class="entities-table">
+              <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Descripción</th>
+                <th style="width: 120px;">Tipo</th>
+                <th style="width: 180px;">Acciones</th>
+              </tr>
+              </thead>
+              <tbody class="draggable-body">
+              {#if !current.Attributes || current.Attributes.length === 0}
+                <tr class="empty-row" draggable="false">
+                  <td colspan="4">No hay atributos definidos aún.</td>
+                </tr>
+              {:else}
+                {#each current.Attributes as attribute, index (attribute.Id)}
+                  <tr
+                    class:dragging={draggingIndex === index}
+                    class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
+                    draggable="true"
+                    style={`view-transition-name: attribute-row-${attribute.Id};`}
+                    on:dragstart={(event) => startDrag(index, event)}
+                    on:dragover={(event) => handleDragOver(index, event)}
+                    on:dragenter={(event) => handleDragOver(index, event)}
+                    on:drop={(event) => handleDrop(index, event)}
+                    on:dragend={clearDrag}
+                  >
+                    <td>{attribute.Name}</td>
+                    <td>{attribute.Description}</td>
+                    <td>{attribute.Type || "Por definir"}</td>
+                    <td>
+                      <div class="row-actions">
+                        <AttributeForm
+                          entityId={current.Id}
+                          attribute={attribute}
+                          onSaved={async () => {
+                            await onRefresh();
+                            await loadEntity(current.Id);
+                          }}
+                        />
+                        <DeleteAttribute
+                          entityId={current.Id}
+                          attributeId={attribute.Id}
+                          onSaved={async () => {
+                            await onRefresh();
+                            await loadEntity(current.Id);
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              {/if}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+  {/if}
+</section>
 
 <style>
   .tab-toolbar {
@@ -887,6 +953,158 @@
   .empty-panel {
     border-color: var(--line-soft);
     background: color-mix(in srgb, var(--surface) 78%, transparent);
+  }
+
+  .attributes-studio {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .attributes-layout {
+    display: grid;
+    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+    align-items: start;
+    gap: 1rem;
+  }
+
+  .attributes-deck {
+    display: grid;
+    gap: 1rem;
+    position: sticky;
+    top: 0.9rem;
+  }
+
+  .attributes-toolbar,
+  .attributes-stage,
+  .attributes-panel {
+    position: relative;
+    overflow: clip;
+  }
+
+  .attributes-toolbar::before,
+  .attributes-stage::before,
+  .attributes-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: min(220px, 42%);
+    height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 34%, transparent), transparent);
+    pointer-events: none;
+  }
+
+  .attributes-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.9rem 1rem;
+  }
+
+  .attributes-toolbar__copy {
+    max-width: 38rem;
+  }
+
+  .attributes-toolbar__meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  .attributes-toolbar__actions {
+    grid-column: 1 / -1;
+  }
+
+  .studio-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.42rem 0.78rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    color: var(--accent-strong);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .studio-chip--quiet {
+    border-color: var(--line-soft);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    color: var(--ink-soft);
+  }
+
+  .attributes-stage {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .attributes-panel {
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-lg) - 2px);
+    background:
+      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 34%),
+      var(--panel-surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .attributes-panel__head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .attributes-panel__hint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 0.8rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+    border: 1px solid var(--line-soft);
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 720px) {
+    .attributes-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .attributes-deck {
+      position: static;
+    }
+
+    .attributes-toolbar,
+    .attributes-panel__head {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+    }
+
+    .attributes-toolbar__meta {
+      justify-content: flex-start;
+    }
+
+    .attributes-panel {
+      padding: 0.9rem;
+    }
+
+    .attributes-panel__hint,
+    .studio-chip {
+      white-space: normal;
+    }
   }
 
 </style>

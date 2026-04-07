@@ -6,12 +6,40 @@ export function AddAttribute(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddAttribute'](arg1, arg2, arg3, arg4);
 }
 
+export function AddBigProcess(arg1, arg2) {
+  return window['go']['main']['App']['AddBigProcess'](arg1, arg2);
+}
+
 export function AddEntity(arg1, arg2) {
   return window['go']['main']['App']['AddEntity'](arg1, arg2);
 }
 
+export function AddProcess(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AddProcess'](arg1, arg2, arg3);
+}
+
 export function AddRelation(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddRelation'](arg1, arg2, arg3);
+}
+
+export function AddResource(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['AddResource'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function AddRole(arg1, arg2) {
+  return window['go']['main']['App']['AddRole'](arg1, arg2);
+}
+
+export function AddRoleProcessPermission(arg1, arg2) {
+  return window['go']['main']['App']['AddRoleProcessPermission'](arg1, arg2);
+}
+
+export function AddRoleTablePermission(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['AddRoleTablePermission'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function AddStep(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['AddStep'](arg1, arg2, arg3, arg4);
 }
 
 export function CreateExcelPath() {
@@ -34,8 +62,36 @@ export function EditAttribute(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['EditAttribute'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function EditBigProcess(arg1, arg2, arg3) {
+  return window['go']['main']['App']['EditBigProcess'](arg1, arg2, arg3);
+}
+
 export function EditEntity(arg1, arg2, arg3) {
   return window['go']['main']['App']['EditEntity'](arg1, arg2, arg3);
+}
+
+export function EditProcess(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['EditProcess'](arg1, arg2, arg3, arg4);
+}
+
+export function EditResource(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['EditResource'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function EditRole(arg1, arg2, arg3) {
+  return window['go']['main']['App']['EditRole'](arg1, arg2, arg3);
+}
+
+export function EditRoleProcessPermission(arg1, arg2, arg3) {
+  return window['go']['main']['App']['EditRoleProcessPermission'](arg1, arg2, arg3);
+}
+
+export function EditRoleTablePermission(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['EditRoleTablePermission'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+}
+
+export function EditStep(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['EditStep'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function EjectProject() {
@@ -62,6 +118,10 @@ export function GetEntity(arg1) {
   return window['go']['main']['App']['GetEntity'](arg1);
 }
 
+export function GetRole(arg1) {
+  return window['go']['main']['App']['GetRole'](arg1);
+}
+
 export function MarkEntityStatus(arg1, arg2) {
   return window['go']['main']['App']['MarkEntityStatus'](arg1, arg2);
 }
@@ -70,8 +130,20 @@ export function MoveAttribute(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveAttribute'](arg1, arg2, arg3);
 }
 
+export function MoveBigProcess(arg1, arg2) {
+  return window['go']['main']['App']['MoveBigProcess'](arg1, arg2);
+}
+
 export function MoveEntity(arg1, arg2) {
   return window['go']['main']['App']['MoveEntity'](arg1, arg2);
+}
+
+export function MoveProcess(arg1, arg2, arg3) {
+  return window['go']['main']['App']['MoveProcess'](arg1, arg2, arg3);
+}
+
+export function MoveStep(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['MoveStep'](arg1, arg2, arg3, arg4);
 }
 
 export function OpenPath(arg1) {
@@ -86,12 +158,40 @@ export function RemoveAttribute(arg1, arg2) {
   return window['go']['main']['App']['RemoveAttribute'](arg1, arg2);
 }
 
+export function RemoveBigProcess(arg1) {
+  return window['go']['main']['App']['RemoveBigProcess'](arg1);
+}
+
 export function RemoveEntity(arg1) {
   return window['go']['main']['App']['RemoveEntity'](arg1);
 }
 
+export function RemoveProcess(arg1, arg2) {
+  return window['go']['main']['App']['RemoveProcess'](arg1, arg2);
+}
+
 export function RemoveRelation(arg1) {
   return window['go']['main']['App']['RemoveRelation'](arg1);
+}
+
+export function RemoveResource(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RemoveResource'](arg1, arg2, arg3, arg4);
+}
+
+export function RemoveRole(arg1) {
+  return window['go']['main']['App']['RemoveRole'](arg1);
+}
+
+export function RemoveRoleProcessPermission(arg1, arg2) {
+  return window['go']['main']['App']['RemoveRoleProcessPermission'](arg1, arg2);
+}
+
+export function RemoveRoleTablePermission(arg1, arg2) {
+  return window['go']['main']['App']['RemoveRoleTablePermission'](arg1, arg2);
+}
+
+export function RemoveStep(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoveStep'](arg1, arg2, arg3);
 }
 
 export function Save() {

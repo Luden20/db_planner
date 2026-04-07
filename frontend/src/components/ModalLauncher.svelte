@@ -2,16 +2,35 @@
   export let triggerLabel = "Abrir modal";
   export let title = "Acción requerida";
   export let confirmLabel = "Confirmar";
-  export let triggerVariant: "primary" | "danger" | "secondary" = "primary";
-  export let confirmVariant: "primary" | "danger" | "secondary" = "primary";
+  export let triggerVariant: "primary" | "danger" | "secondary" | "accent" | "success" = "primary";
+  export let confirmVariant: "primary" | "danger" | "secondary" | "accent" | "success" = "primary";
   export let size: "default" | "form" = "default";
   export let showTrigger = true;
+  export let triggerClass = "";
+  export let triggerDisabled = false;
   export let onSuccess: () => void | Promise<void> = () => {};
   export let onOpen: () => void | Promise<void> = () => {};
 
   let isOpen = false;
   let busy = false;
   let errorMessage = "";
+
+  const portal = (node: HTMLElement) => {
+    if (typeof document === "undefined") {
+      return {};
+    }
+
+    const target = document.body;
+    target.appendChild(node);
+
+    return {
+      destroy() {
+        if (node.parentNode === target) {
+          target.removeChild(node);
+        }
+      }
+    };
+  };
 
   const openModal = () => {
     errorMessage = "";
@@ -72,7 +91,7 @@
 </script>
 
 {#if showTrigger}
-  <button class={`btn ${triggerVariant}`} on:click={openModal}>
+  <button class={`btn ${triggerVariant} ${triggerClass}`.trim()} on:click={openModal} disabled={triggerDisabled}>
     {triggerLabel}
   </button>
 {/if}
@@ -80,6 +99,7 @@
 {#if isOpen}
   <div
     class="modal-backdrop"
+    use:portal
     role="presentation"
     tabindex="-1"
     on:click={closeModal}

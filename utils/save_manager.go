@@ -64,6 +64,8 @@ func CreateNew(path string, name string) (*DbProject, error) {
 			project.Name = name
 			project.Entities = make([]Entity, 0)
 			project.Relations = make([]Relation, 0)
+			project.BigProcesses = make([]BigProcess, 0)
+			project.Roles = make([]Role, 0)
 			singleInstance = &SingletonData{
 				project: &project,
 				path:    path,
@@ -91,6 +93,35 @@ func LoadProjectFromJson(path string) (*DbProject, error) {
 			if err != nil {
 				return nil, err
 			}
+			if len(project.BigProcesses) == 0 {
+				var legacy struct {
+					BigProcess   []BigProcess
+					BigProcesses []BigProcess
+					Process      []Process
+				}
+				if err := json.Unmarshal(data, &legacy); err == nil {
+					switch {
+					case len(legacy.BigProcesses) > 0:
+						project.BigProcesses = legacy.BigProcesses
+					case len(legacy.BigProcess) > 0:
+						project.BigProcesses = legacy.BigProcess
+					case len(legacy.Process) > 0:
+						project.BigProcesses = []BigProcess{
+							{
+								Id:          1,
+								Name:        "General",
+								Description: "",
+								Processes:   legacy.Process,
+							},
+						}
+					}
+				}
+			}
+			project.ensureAttributes()
+			project.ensureProcesses()
+			project.ensureRoles()
+			project.normalizeRelations()
+			project.syncCounters()
 			singleInstance = &SingletonData{
 				project: &project,
 				path:    path,

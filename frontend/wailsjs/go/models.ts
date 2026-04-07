@@ -18,6 +18,206 @@ export namespace utils {
 	        this.Type = source["Type"];
 	    }
 	}
+	export class StepResource {
+	    Id: number;
+	    TableId: number;
+	    Role: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new StepResource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Id = source["Id"];
+	        this.TableId = source["TableId"];
+	        this.Role = source["Role"];
+	    }
+	}
+	export class Step {
+	    Id: number;
+	    Name: string;
+	    Description: string;
+	    Order: number;
+	    Resources: StepResource[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Step(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Id = source["Id"];
+	        this.Name = source["Name"];
+	        this.Description = source["Description"];
+	        this.Order = source["Order"];
+	        this.Resources = this.convertValues(source["Resources"], StepResource);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Process {
+	    Id: number;
+	    Name: string;
+	    Description: string;
+	    Steps: Step[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Process(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Id = source["Id"];
+	        this.Name = source["Name"];
+	        this.Description = source["Description"];
+	        this.Steps = this.convertValues(source["Steps"], Step);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BigProcess {
+	    Id: number;
+	    Name: string;
+	    Description: string;
+	    Processes: Process[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BigProcess(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Id = source["Id"];
+	        this.Name = source["Name"];
+	        this.Description = source["Description"];
+	        this.Processes = this.convertValues(source["Processes"], Process);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RoleTablePermission {
+	    Id: number;
+	    TableId: number;
+	    InsertPermission: boolean;
+	    DeletePermission: boolean;
+	    UpdatePermission: boolean;
+	    ViewPermission: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RoleTablePermission(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Id = source["Id"];
+	        this.TableId = source["TableId"];
+	        this.InsertPermission = source["InsertPermission"];
+	        this.DeletePermission = source["DeletePermission"];
+	        this.UpdatePermission = source["UpdatePermission"];
+	        this.ViewPermission = source["ViewPermission"];
+	    }
+	}
+	export class ProcessPermission {
+	    Id: number;
+	    ProcessId: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProcessPermission(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Id = source["Id"];
+	        this.ProcessId = source["ProcessId"];
+	    }
+	}
+	export class Role {
+	    Id: number;
+	    Name: string;
+	    Description: string;
+	    ProcessPermissions: ProcessPermission[];
+	    TablePermissions: RoleTablePermission[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Role(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Id = source["Id"];
+	        this.Name = source["Name"];
+	        this.Description = source["Description"];
+	        this.ProcessPermissions = this.convertValues(source["ProcessPermissions"], ProcessPermission);
+	        this.TablePermissions = this.convertValues(source["TablePermissions"], RoleTablePermission);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Relation {
 	    Id: number;
 	    IdEntity1: number;
@@ -79,8 +279,17 @@ export namespace utils {
 	    Entities: Entity[];
 	    EntitiesLastMax: number;
 	    Relations: Relation[];
+	    BigProcesses: BigProcess[];
+	    Roles: Role[];
 	    RelationsLastMax: number;
 	    AttributesLastMax: number;
+	    BigProcessLastMax: number;
+	    ProcessLastMax: number;
+	    StepsLastMax: number;
+	    StepResourceLastMax: number;
+	    RoleLastMax: number;
+	    ProcessPermissionLastMax: number;
+	    RoleTablePermissionLastMax: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new DbProject(source);
@@ -92,8 +301,17 @@ export namespace utils {
 	        this.Entities = this.convertValues(source["Entities"], Entity);
 	        this.EntitiesLastMax = source["EntitiesLastMax"];
 	        this.Relations = this.convertValues(source["Relations"], Relation);
+	        this.BigProcesses = this.convertValues(source["BigProcesses"], BigProcess);
+	        this.Roles = this.convertValues(source["Roles"], Role);
 	        this.RelationsLastMax = source["RelationsLastMax"];
 	        this.AttributesLastMax = source["AttributesLastMax"];
+	        this.BigProcessLastMax = source["BigProcessLastMax"];
+	        this.ProcessLastMax = source["ProcessLastMax"];
+	        this.StepsLastMax = source["StepsLastMax"];
+	        this.StepResourceLastMax = source["StepResourceLastMax"];
+	        this.RoleLastMax = source["RoleLastMax"];
+	        this.ProcessPermissionLastMax = source["ProcessPermissionLastMax"];
+	        this.RoleTablePermissionLastMax = source["RoleTablePermissionLastMax"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -114,6 +332,8 @@ export namespace utils {
 		    return a;
 		}
 	}
+	
+	
 	
 	
 	export class RelationViewItem {
@@ -168,6 +388,10 @@ export namespace utils {
 		    return a;
 		}
 	}
+	
+	
+	
+	
 
 }
 
