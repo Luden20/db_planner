@@ -6,6 +6,8 @@
   export let id:number|null=null;
   export let onSave: () => Promise<void> = async () => {};
   export let showTrigger = true;
+  export let triggerLabel: string | null = null;
+  export let title: string | null = null;
   let name = "";
   let description = "";
   let error = "";
@@ -102,15 +104,23 @@
       throw err;
     }
   };
+  $: resolvedTriggerLabel = triggerLabel ?? (id === null ? "Nueva entidad" : "Editar entidad");
+  $: resolvedTitle = title ?? (id === null
+    ? (insertionTarget?.placement === "above"
+      ? "Insertar entidad arriba"
+      : insertionTarget?.placement === "below"
+        ? "Insertar entidad abajo"
+        : "Crear entidad")
+    : "Editar entidad");
 </script>
 
 <div class="toolbar-actions">
   <ModalLauncher
           bind:this={modalRef}
-          triggerLabel={id === null ? "Nueva entidad" : "Editar entidad"}
-          title={id === null ? (insertionTarget?.placement === "above" ? "Insertar entidad arriba" : insertionTarget?.placement === "below" ? "Insertar entidad abajo" : "Crear entidad") : "Editar entidad"}
+          triggerLabel={resolvedTriggerLabel}
+          title={resolvedTitle}
           confirmLabel="Guardar"
-          triggerVariant="primary"
+          triggerVariant={id === null ? "primary" : "edit"}
           confirmVariant="primary"
           size="form"
           {showTrigger}

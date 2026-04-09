@@ -16,10 +16,13 @@
   --accent: #1e5f66;
   --accent-strong: #17464c;
   --accent-soft: rgba(30, 95, 102, 0.1);
+  --edit: #4e6f95;
+  --edit-strong: #2f4968;
+  --edit-soft: rgba(78, 111, 149, 0.12);
   --success: #3d7251;
   --success-soft: rgba(61, 114, 81, 0.12);
-  --danger: #984f42;
-  --danger-soft: rgba(152, 79, 66, 0.12);
+  --danger: #aa4c3b;
+  --danger-soft: rgba(170, 76, 59, 0.14);
   --shadow-sm: 0 14px 30px rgba(63, 53, 35, 0.08);
   --shadow-lg: 0 28px 70px rgba(63, 53, 35, 0.14);
   --radius-sm: 16px;
@@ -57,12 +60,32 @@
     color-mix(in srgb, var(--surface-strong) 97%, transparent),
     color-mix(in srgb, var(--surface-quiet) 92%, transparent)
   );
-  --control-base-surface: color-mix(in srgb, var(--surface-strong) 86%, transparent);
-  --control-soft-surface: color-mix(in srgb, var(--surface-strong) 90%, transparent);
-  --control-ghost-surface: color-mix(in srgb, var(--surface) 86%, transparent);
+  --control-base-surface: #f1e7d9;
+  --control-base-surface-strong: #e7dbc9;
+  --control-soft-surface: #ede1d0;
+  --control-soft-surface-strong: #e2d4c1;
+  --control-ghost-surface: #f7f0e6;
+  --control-ghost-surface-strong: #ece1d2;
+  --action-neutral-surface: #f0e5d7;
+  --action-neutral-surface-strong: #e3d6c3;
+  --action-neutral-border: rgba(28, 31, 35, 0.14);
+  --action-neutral-ink: #1b2026;
   --action-strong-surface: #24343a;
+  --action-strong-surface-strong: #1a252a;
   --action-strong-border: color-mix(in srgb, var(--accent) 28%, #162126);
   --action-strong-ink: #f7f3ed;
+  --action-edit-surface: #5b7da6;
+  --action-edit-surface-strong: #47668d;
+  --action-edit-border: #3e5876;
+  --action-edit-ink: #f5f8fc;
+  --action-success-surface: #54775a;
+  --action-success-surface-strong: #426047;
+  --action-success-border: #38533d;
+  --action-success-ink: #f3f7f2;
+  --action-danger-surface: #b65d49;
+  --action-danger-surface-strong: #964736;
+  --action-danger-border: #7f3a2d;
+  --action-danger-ink: #fff4f0;
   --line-soft: color-mix(in srgb, var(--ink) 10%, transparent);
   --line-faint: color-mix(in srgb, var(--ink) 6%, transparent);
   --hover-soft: color-mix(in srgb, var(--ink) 4%, transparent);
@@ -71,6 +94,9 @@
   --focus-border: color-mix(in srgb, var(--accent) 34%, var(--border));
   --focus-ring: 0 0 0 0.22rem color-mix(in srgb, var(--accent) 18%, transparent);
   --overlay-scrim: rgba(42, 36, 29, 0.34);
+  --layer-ribbon: 30;
+  --layer-modal: 90;
+  --layer-toast: 120;
   --surface-highlight: inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
 }
 
@@ -89,10 +115,13 @@
   --accent: #8db9bd;
   --accent-strong: #d0edef;
   --accent-soft: rgba(141, 185, 189, 0.12);
+  --edit: #95b4d7;
+  --edit-strong: #e4effd;
+  --edit-soft: rgba(149, 180, 215, 0.16);
   --success: #98c5a3;
   --success-soft: rgba(152, 197, 163, 0.12);
-  --danger: #d7a093;
-  --danger-soft: rgba(215, 160, 147, 0.12);
+  --danger: #e59a88;
+  --danger-soft: rgba(229, 154, 136, 0.16);
   --shadow-sm: 0 18px 34px rgba(0, 0, 0, 0.28);
   --shadow-lg: 0 34px 80px rgba(0, 0, 0, 0.38);
   --bg-top: #202228;
@@ -127,12 +156,32 @@
     color-mix(in srgb, #2b3038 98%, transparent),
     color-mix(in srgb, #1d2128 96%, transparent)
   );
-  --control-base-surface: color-mix(in srgb, #2c3139 94%, transparent);
-  --control-soft-surface: color-mix(in srgb, #313740 94%, transparent);
-  --control-ghost-surface: color-mix(in srgb, #262b33 92%, transparent);
-  --action-strong-surface: #334850;
-  --action-strong-border: color-mix(in srgb, var(--accent) 34%, #425962);
+  --control-base-surface: #353c45;
+  --control-base-surface-strong: #2e353f;
+  --control-soft-surface: #3b434e;
+  --control-soft-surface-strong: #343c47;
+  --control-ghost-surface: #2f353e;
+  --control-ghost-surface-strong: #293039;
+  --action-neutral-surface: #39414b;
+  --action-neutral-surface-strong: #313843;
+  --action-neutral-border: rgba(245, 239, 231, 0.14);
+  --action-neutral-ink: #f1ece3;
+  --action-strong-surface: #415961;
+  --action-strong-surface-strong: #34474e;
+  --action-strong-border: color-mix(in srgb, var(--accent) 34%, #506973);
   --action-strong-ink: #f3f7f6;
+  --action-edit-surface: #587394;
+  --action-edit-surface-strong: #455d7b;
+  --action-edit-border: #84a7cf;
+  --action-edit-ink: #eef5ff;
+  --action-success-surface: #537259;
+  --action-success-surface-strong: #415947;
+  --action-success-border: #7da989;
+  --action-success-ink: #f1f7f2;
+  --action-danger-surface: #945245;
+  --action-danger-surface-strong: #7c4035;
+  --action-danger-border: #d79180;
+  --action-danger-ink: #fff0eb;
   --overlay-scrim: rgba(9, 10, 13, 0.58);
   --surface-highlight: inset 0 1px 0 color-mix(in srgb, white 9%, transparent);
 }
@@ -215,11 +264,22 @@ button {
   color: inherit;
 }
 
+button .button-glyph {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: currentColor;
+  flex-shrink: 0;
+  transition: transform 180ms cubic-bezier(.19, 1, .22, 1), opacity 180ms ease;
+}
+
 .control {
-  --control-surface: var(--control-base-surface);
-  --control-border: color-mix(in srgb, var(--ink) 10%, transparent);
-  --control-ink: var(--ink);
+  --control-surface: var(--action-neutral-surface);
+  --control-surface-strong: var(--action-neutral-surface-strong);
+  --control-border: var(--action-neutral-border);
+  --control-ink: var(--action-neutral-ink);
   --control-shadow: 0 12px 22px color-mix(in srgb, var(--ink) 9%, transparent);
+  --control-glow: color-mix(in srgb, var(--ink) 11%, transparent);
+  --control-highlight: inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -231,14 +291,14 @@ button {
   border: 1px solid var(--control-border);
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--control-surface) 100%, white 0%),
-    color-mix(in srgb, var(--control-surface) 88%, var(--bg-muted) 12%)
+    var(--control-surface),
+    var(--control-surface-strong)
   );
   color: var(--control-ink);
   font-weight: 750;
   letter-spacing: -0.01em;
   line-height: 1;
-  box-shadow: var(--control-shadow), inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+  box-shadow: var(--control-shadow), var(--control-highlight);
   cursor: pointer;
   transition:
     transform 150ms cubic-bezier(.19, 1, .22, 1),
@@ -250,14 +310,23 @@ button {
 }
 
 .control:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--control-border) 72%, var(--border-strong));
-  box-shadow: 0 16px 26px color-mix(in srgb, var(--ink) 12%, transparent), inset 0 1px 0 color-mix(in srgb, white 36%, transparent);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--control-border) 78%, white 22%);
+  box-shadow: 0 18px 28px var(--control-glow), inset 0 1px 0 color-mix(in srgb, white 36%, transparent);
+}
+
+.control:hover .button-glyph,
+.control:focus-visible .button-glyph {
+  transform: translateY(-1px) scale(1.06);
 }
 
 .control:active {
   transform: translateY(1px) scale(0.985);
-  box-shadow: 0 8px 14px color-mix(in srgb, var(--ink) 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 20%, transparent);
+  box-shadow: 0 8px 14px color-mix(in srgb, var(--control-glow) 88%, transparent), inset 0 1px 0 color-mix(in srgb, white 18%, transparent);
+}
+
+.control:active .button-glyph {
+  transform: scale(0.96);
 }
 
 .control:disabled {
@@ -267,11 +336,8 @@ button {
   box-shadow: none;
 }
 
-.control svg {
-  width: 0.95rem;
-  height: 0.95rem;
-  fill: currentColor;
-  flex-shrink: 0;
+.control .button-glyph {
+  opacity: 0.96;
 }
 
 .control--sm {
@@ -309,36 +375,57 @@ button {
 
 .control--soft {
   --control-surface: var(--control-soft-surface);
+  --control-surface-strong: var(--control-soft-surface-strong);
 }
 
 .control--ghost {
   --control-surface: var(--control-ghost-surface);
+  --control-surface-strong: var(--control-ghost-surface-strong);
   --control-shadow: 0 8px 16px color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
 .control--accent {
-  --control-surface: color-mix(in srgb, var(--accent) 13%, var(--surface-strong));
-  --control-border: color-mix(in srgb, var(--accent) 22%, var(--border));
+  --control-surface: color-mix(in srgb, var(--accent) 22%, var(--action-neutral-surface));
+  --control-surface-strong: color-mix(in srgb, var(--accent) 34%, var(--action-neutral-surface-strong));
+  --control-border: color-mix(in srgb, var(--accent) 28%, var(--border));
   --control-ink: var(--accent-strong);
+  --control-glow: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.control--edit {
+  --control-surface: var(--action-edit-surface);
+  --control-surface-strong: var(--action-edit-surface-strong);
+  --control-border: var(--action-edit-border);
+  --control-ink: var(--action-edit-ink);
+  --control-shadow: 0 18px 28px color-mix(in srgb, var(--edit) 20%, transparent);
+  --control-glow: color-mix(in srgb, var(--edit) 24%, transparent);
 }
 
 .control--success {
-  --control-surface: color-mix(in srgb, var(--success) 14%, var(--surface-strong));
-  --control-border: color-mix(in srgb, var(--success) 24%, var(--border));
-  --control-ink: var(--success);
+  --control-surface: var(--action-success-surface);
+  --control-surface-strong: var(--action-success-surface-strong);
+  --control-border: var(--action-success-border);
+  --control-ink: var(--action-success-ink);
+  --control-shadow: 0 18px 28px color-mix(in srgb, var(--success) 18%, transparent);
+  --control-glow: color-mix(in srgb, var(--success) 22%, transparent);
 }
 
 .control--danger {
-  --control-surface: color-mix(in srgb, var(--danger) 13%, var(--surface-strong));
-  --control-border: color-mix(in srgb, var(--danger) 22%, var(--border));
-  --control-ink: var(--danger);
+  --control-surface: var(--action-danger-surface);
+  --control-surface-strong: var(--action-danger-surface-strong);
+  --control-border: var(--action-danger-border);
+  --control-ink: var(--action-danger-ink);
+  --control-shadow: 0 18px 28px color-mix(in srgb, var(--danger) 20%, transparent);
+  --control-glow: color-mix(in srgb, var(--danger) 26%, transparent);
 }
 
 .control--primary {
   --control-surface: var(--action-strong-surface);
+  --control-surface-strong: var(--action-strong-surface-strong);
   --control-border: var(--action-strong-border);
   --control-ink: var(--action-strong-ink);
   --control-shadow: 0 18px 26px color-mix(in srgb, var(--ink) 18%, transparent);
+  --control-glow: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .control--active {
@@ -360,12 +447,16 @@ button {
   color: color-mix(in srgb, var(--action-strong-ink) 74%, transparent);
 }
 
+.control--edit .control__meta {
+  color: color-mix(in srgb, var(--action-edit-ink) 74%, transparent);
+}
+
 .control--danger .control__meta {
-  color: color-mix(in srgb, var(--danger) 74%, var(--surface));
+  color: color-mix(in srgb, var(--action-danger-ink) 70%, transparent);
 }
 
 .control--success .control__meta {
-  color: color-mix(in srgb, var(--success) 74%, var(--surface));
+  color: color-mix(in srgb, var(--action-success-ink) 72%, transparent);
 }
 
 #app {
@@ -380,6 +471,10 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .control {
+    transition: none;
+  }
+
+  button .button-glyph {
     transition: none;
   }
 }

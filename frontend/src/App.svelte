@@ -16,6 +16,7 @@
   import type {utils} from "../wailsjs/go/models";
   import Hero from './components/Hero.svelte';
   import WorkspaceRibbon from "./components/WorkspaceRibbon.svelte";
+  import ButtonIcon from "./components/ButtonIcon.svelte";
   import EntitiesTab from './components/EntitiesTab.svelte';
   import RelationsTab from "./components/RelationsTab.svelte";
   import AttributesTab from "./components/AttributesTab.svelte";
@@ -243,7 +244,8 @@
         on:click={toggleTheme}
         aria-label={themeMode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
       >
-        {themeMode === "dark" ? "Cambiar a claro" : "Cambiar a oscuro"}
+        <ButtonIcon name={themeMode === "dark" ? "theme-light" : "theme-dark"}/>
+        <span>{themeMode === "dark" ? "Cambiar a claro" : "Cambiar a oscuro"}</span>
       </button>
     </div>
     <Hero onOpen={openProject} onCreate={openCreateDialog}/>
@@ -270,7 +272,7 @@
       style={`--workspace-ribbon-offset: ${Math.max(ribbonHeight + 18, 18)}px;`}
     >
       {#if activeTab === 'entities'}
-        <EntitiesTab entities={data.Entities} onSave={handleRefresh} onJumpTo={handleJumpToEntityTab}/>
+        <EntitiesTab project={data} onSave={handleRefresh} onJumpTo={handleJumpToEntityTab}/>
       {:else if activeTab === 'relations'}
         <RelationsTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
       {:else if activeTab === 'roles'}
@@ -278,7 +280,7 @@
       {:else if activeTab === 'flows'}
         <FlowsTab project={data} entities={data.Entities} onRefresh={handleRefresh}/>
       {:else}
-        <AttributesTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
+        <AttributesTab project={data} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
       {/if}
     </section>
   {:else}
@@ -359,7 +361,10 @@
         {/if}
 
         <div class="modal-actions">
-          <button class="btn secondary" on:click={closeCreateDialog} disabled={createBusy}>Cancelar</button>
+          <button class="btn secondary" on:click={closeCreateDialog} disabled={createBusy}>
+            <ButtonIcon name="close"/>
+            <span>Cancelar</span>
+          </button>
           <button class="btn primary" on:click={submitCreateProject} disabled={createBusy}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 4a.75.75 0 0 0-.75.75V11H5.75a.75.75 0 0 0 0 1.5h5.5v6.25a.75.75 0 0 0 1.5 0V12.5h5.5a.75.75 0 0 0 0-1.5h-5.5V4.75A.75.75 0 0 0 12 4Z"/>
@@ -415,10 +420,13 @@
   }
 
   :global(.btn) {
-    --btn-surface: color-mix(in srgb, var(--surface-strong) 88%, transparent);
-    --btn-border: color-mix(in srgb, var(--ink) 10%, transparent);
-    --btn-ink: var(--ink);
+    --btn-surface: var(--action-neutral-surface);
+    --btn-surface-strong: var(--action-neutral-surface-strong);
+    --btn-border: var(--action-neutral-border);
+    --btn-ink: var(--action-neutral-ink);
     --btn-shadow: 0 14px 24px color-mix(in srgb, var(--ink) 10%, transparent);
+    --btn-glow: color-mix(in srgb, var(--ink) 12%, transparent);
+    --btn-highlight: inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
     position: relative;
     border: 1px solid var(--btn-border);
     border-radius: 1rem;
@@ -426,14 +434,14 @@
     padding: 0.72rem 1.08rem;
     background: linear-gradient(
       180deg,
-      color-mix(in srgb, var(--btn-surface) 100%, white 0%),
-      color-mix(in srgb, var(--btn-surface) 88%, var(--bg-muted) 12%)
+      var(--btn-surface),
+      var(--btn-surface-strong)
     );
     color: var(--btn-ink);
     font-weight: 760;
     letter-spacing: -0.01em;
     line-height: 1;
-    box-shadow: var(--btn-shadow), inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+    box-shadow: var(--btn-shadow), var(--btn-highlight);
     cursor: pointer;
     transition:
       transform 150ms cubic-bezier(.19, 1, .22, 1),
@@ -447,33 +455,44 @@
     gap: 0.5rem;
   }
 
-  :global(.btn svg) {
-    width: 0.9rem;
-    height: 0.9rem;
-    fill: currentColor;
-    flex-shrink: 0;
+  :global(.btn .button-glyph) {
     opacity: 0.92;
   }
 
   :global(.btn.primary) {
     --btn-surface: var(--action-strong-surface);
+    --btn-surface-strong: var(--action-strong-surface-strong);
     --btn-border: var(--action-strong-border);
     --btn-ink: var(--action-strong-ink);
     --btn-shadow: 0 18px 30px color-mix(in srgb, var(--ink) 18%, transparent);
+    --btn-glow: color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
   :global(.btn.accent) {
-    --btn-surface: color-mix(in srgb, var(--accent) 13%, var(--surface-strong));
-    --btn-border: color-mix(in srgb, var(--accent) 22%, var(--border));
+    --btn-surface: color-mix(in srgb, var(--accent) 26%, var(--action-neutral-surface));
+    --btn-surface-strong: color-mix(in srgb, var(--accent) 38%, var(--action-neutral-surface-strong));
+    --btn-border: color-mix(in srgb, var(--accent) 28%, var(--border));
     --btn-ink: var(--accent-strong);
     --btn-shadow: 0 14px 24px color-mix(in srgb, var(--accent) 12%, transparent);
+    --btn-glow: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  :global(.btn.edit) {
+    --btn-surface: var(--action-edit-surface);
+    --btn-surface-strong: var(--action-edit-surface-strong);
+    --btn-border: var(--action-edit-border);
+    --btn-ink: var(--action-edit-ink);
+    --btn-shadow: 0 16px 28px color-mix(in srgb, var(--edit) 22%, transparent);
+    --btn-glow: color-mix(in srgb, var(--edit) 26%, transparent);
   }
 
   :global(.btn.success) {
-    --btn-surface: color-mix(in srgb, var(--success) 14%, var(--surface-strong));
-    --btn-border: color-mix(in srgb, var(--success) 24%, var(--border));
-    --btn-ink: var(--success);
+    --btn-surface: var(--action-success-surface);
+    --btn-surface-strong: var(--action-success-surface-strong);
+    --btn-border: var(--action-success-border);
+    --btn-ink: var(--action-success-ink);
     --btn-shadow: 0 14px 24px color-mix(in srgb, var(--success) 14%, transparent);
+    --btn-glow: color-mix(in srgb, var(--success) 22%, transparent);
   }
 
   :global(.btn:disabled) {
@@ -484,27 +503,39 @@
   }
 
   :global(.btn.danger) {
-    --btn-surface: color-mix(in srgb, var(--danger) 14%, var(--surface-strong));
-    --btn-border: color-mix(in srgb, var(--danger) 20%, var(--border));
-    --btn-ink: var(--danger);
-    --btn-shadow: 0 14px 26px color-mix(in srgb, var(--danger) 14%, transparent);
+    --btn-surface: var(--action-danger-surface);
+    --btn-surface-strong: var(--action-danger-surface-strong);
+    --btn-border: var(--action-danger-border);
+    --btn-ink: var(--action-danger-ink);
+    --btn-shadow: 0 14px 26px color-mix(in srgb, var(--danger) 18%, transparent);
+    --btn-glow: color-mix(in srgb, var(--danger) 26%, transparent);
   }
 
   :global(.btn:hover) {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--btn-border) 74%, var(--border-strong));
-    box-shadow: 0 18px 28px color-mix(in srgb, var(--ink) 12%, transparent), inset 0 1px 0 color-mix(in srgb, white 34%, transparent);
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--btn-border) 78%, white 22%);
+    box-shadow: 0 18px 28px var(--btn-glow), inset 0 1px 0 color-mix(in srgb, white 34%, transparent);
+  }
+
+  :global(.btn:hover .button-glyph),
+  :global(.btn:focus-visible .button-glyph) {
+    transform: translateY(-1px) scale(1.06);
   }
 
   :global(.btn:active) {
     transform: translateY(1px) scale(0.985);
-    box-shadow: 0 9px 16px color-mix(in srgb, var(--ink) 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
+    box-shadow: 0 9px 16px color-mix(in srgb, var(--btn-glow) 88%, transparent), inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
+  }
+
+  :global(.btn:active .button-glyph) {
+    transform: scale(0.96);
   }
 
   :global(.btn.secondary) {
-    --btn-surface: var(--control-soft-surface);
-    --btn-border: var(--border);
-    --btn-ink: var(--ink);
+    --btn-surface: var(--action-neutral-surface);
+    --btn-surface-strong: var(--action-neutral-surface-strong);
+    --btn-border: var(--action-neutral-border);
+    --btn-ink: var(--action-neutral-ink);
   }
 
   :global(.empty-panel) {
@@ -530,7 +561,7 @@
     display: grid;
     place-items: center;
     padding: 1.2rem;
-    z-index: 10;
+    z-index: var(--layer-modal);
     backdrop-filter: blur(10px);
   }
 
@@ -623,7 +654,7 @@
     position: fixed;
     top: 1.2rem;
     right: 1.2rem;
-    z-index: 120;
+    z-index: var(--layer-toast);
     min-width: 15rem;
     max-width: min(22rem, calc(100vw - 2rem));
     padding: 0.95rem 1rem;
@@ -685,6 +716,12 @@
       left: 1rem;
       min-width: 0;
       max-width: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.btn) {
+      transition: none;
     }
   }
 </style>

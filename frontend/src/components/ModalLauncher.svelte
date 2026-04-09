@@ -1,9 +1,14 @@
 <script lang="ts">
+  import ButtonIcon from "./ButtonIcon.svelte";
+
   export let triggerLabel = "Abrir modal";
   export let title = "Acción requerida";
   export let confirmLabel = "Confirmar";
-  export let triggerVariant: "primary" | "danger" | "secondary" | "accent" | "success" = "primary";
-  export let confirmVariant: "primary" | "danger" | "secondary" | "accent" | "success" = "primary";
+  export let triggerVariant: "primary" | "danger" | "secondary" | "accent" | "success" | "edit" = "primary";
+  export let confirmVariant: "primary" | "danger" | "secondary" | "accent" | "success" | "edit" = "primary";
+  export let triggerIcon: string | null = null;
+  export let confirmIcon: string | null = null;
+  export let cancelIcon = "close";
   export let size: "default" | "form" = "default";
   export let showTrigger = true;
   export let triggerClass = "";
@@ -14,6 +19,39 @@
   let isOpen = false;
   let busy = false;
   let errorMessage = "";
+
+  const normalize = (value: string) => value.trim().toLowerCase();
+
+  const inferIcon = (
+    label: string,
+    variant: typeof triggerVariant,
+    fallback: string
+  ) => {
+    const normalized = normalize(label);
+
+    if (normalized.includes("guardar")) return "save";
+    if (normalized.includes("salir")) return "exit";
+    if (normalized.includes("eliminar") || normalized.includes("borrar") || normalized.includes("quitar")) return "trash";
+    if (normalized.includes("editar")) return "edit";
+    if (normalized.includes("cerrar") || normalized.includes("cancelar")) return "close";
+    if (normalized.includes("cargar") || normalized.includes("abrir")) return "folder";
+    if (normalized.includes("detalle") || normalized.includes("ver")) return "eye";
+    if (normalized.includes("atribut")) return "attributes";
+    if (normalized.includes("relacion")) return "relations";
+    if (normalized.includes("rol")) return "roles";
+    if (normalized.includes("flujo") || normalized.includes("proceso") || normalized.includes("paso")) return "flows";
+    if (normalized.includes("tabla") || normalized.includes("entidad")) return "database";
+    if (normalized.includes("vincular")) return "link";
+    if (normalized.includes("crear") || normalized.includes("nuevo") || normalized.includes("nueva") || normalized.includes("agregar")) return "plus";
+
+    if (variant === "danger") return "trash";
+    if (variant === "edit") return "edit";
+    if (variant === "success") return "check";
+    return fallback;
+  };
+
+  $: resolvedTriggerIcon = triggerIcon ?? inferIcon(`${triggerLabel} ${title}`, triggerVariant, triggerVariant === "primary" ? "spark" : "plus");
+  $: resolvedConfirmIcon = confirmIcon ?? inferIcon(confirmLabel, confirmVariant, confirmVariant === "primary" ? "save" : "check");
 
   const portal = (node: HTMLElement) => {
     if (typeof document === "undefined") {
@@ -92,7 +130,8 @@
 
 {#if showTrigger}
   <button class={`btn ${triggerVariant} ${triggerClass}`.trim()} on:click={openModal} disabled={triggerDisabled}>
-    {triggerLabel}
+    <ButtonIcon name={resolvedTriggerIcon}/>
+    <span>{triggerLabel}</span>
   </button>
 {/if}
 
@@ -109,9 +148,7 @@
       <header class="modal-header">
         <p class="modal-title">{title}</p>
         <button class="icon-btn control control--icon control--soft" on:click={closeModal} aria-label="Cerrar modal">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6.72 6.72a.75.75 0 0 1 1.06 0L12 10.94l4.22-4.22a.75.75 0 1 1 1.06 1.06L13.06 12l4.22 4.22a.75.75 0 0 1-1.06 1.06L12 13.06l-4.22 4.22a.75.75 0 1 1-1.06-1.06L10.94 12 6.72 7.78a.75.75 0 0 1 0-1.06Z"/>
-          </svg>
+          <ButtonIcon name="close"/>
         </button>
       </header>
 
@@ -123,9 +160,13 @@
       </section>
 
       <footer class="modal-footer">
-        <button class="btn secondary" on:click={closeModal} disabled={busy}>Cancelar</button>
+        <button class="btn secondary" on:click={closeModal} disabled={busy}>
+          <ButtonIcon name={cancelIcon}/>
+          <span>Cancelar</span>
+        </button>
         <button class={`btn ${confirmVariant}`} on:click={handleSuccess} disabled={busy}>
-          {busy ? "Procesando..." : confirmLabel}
+          <ButtonIcon name={busy ? "spark" : resolvedConfirmIcon}/>
+          <span>{busy ? "Procesando..." : confirmLabel}</span>
         </button>
       </footer>
     </div>
@@ -140,7 +181,7 @@
     place-items: center;
     background: var(--overlay-scrim);
     backdrop-filter: blur(10px);
-    z-index: 40;
+    z-index: var(--layer-modal);
     padding: 1.2rem;
   }
 

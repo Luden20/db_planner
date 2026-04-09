@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ButtonIcon from "./ButtonIcon.svelte";
+
   export let name: string;
   export let entityCount: number;
   export let activeTab: "entities" | "relations" | "roles" | "flows" | "tertiary";
@@ -9,77 +11,123 @@
   export let onExport: () => void = () => {};
   export let onExportWithoutRelations: () => void = () => {};
   export let onExit: () => void = () => {};
+  let exportMenuOpen = false;
+  let exportMenuEl: HTMLDivElement | null = null;
+  let exportTriggerEl: HTMLButtonElement | null = null;
 
   const viewItems = [
-    {key: "entities" as const, label: "Entidades", hint: "Base del modelo"},
-    {key: "relations" as const, label: "Relaciones", hint: "Cruces y tipos"},
-    {key: "roles" as const, label: "Roles", hint: "Matriz de acceso"},
-    {key: "flows" as const, label: "Flujos", hint: "Deck operativo"},
-    {key: "tertiary" as const, label: "Atributos", hint: "Detalle por entidad"}
+    {key: "entities" as const, label: "Entidades", hint: "Base del modelo", icon: "database" as const},
+    {key: "relations" as const, label: "Relaciones", hint: "Cruces y tipos", icon: "relations" as const},
+    {key: "tertiary" as const, label: "Atributos", hint: "Detalle por entidad", icon: "attributes" as const},
+    {key: "flows" as const, label: "Flujos", hint: "Deck operativo", icon: "flows" as const},
+    {key: "roles" as const, label: "Roles", hint: "Matriz de acceso", icon: "roles" as const}
   ];
+
+  const toggleExportMenu = () => {
+    exportMenuOpen = !exportMenuOpen;
+  };
+
+  const closeExportMenu = () => {
+    exportMenuOpen = false;
+  };
+
+  const handleExportAction = (mode: "full" | "plain") => {
+    closeExportMenu();
+    if (mode === "full") {
+      onExport();
+      return;
+    }
+    onExportWithoutRelations();
+  };
+
+  const handleWindowClick = (event: MouseEvent) => {
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (exportMenuEl?.contains(target) || exportTriggerEl?.contains(target)) return;
+    closeExportMenu();
+  };
+
+  const handleWindowKeydown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      closeExportMenu();
+    }
+  };
 </script>
+
+<svelte:window on:click={handleWindowClick} on:keydown={handleWindowKeydown}/>
 
 <section class="workspace-ribbon">
   <div class="ribbon-head">
     <div class="ribbon-copy">
-      <p class="ribbon-kicker">Workspace Ribbon</p>
+      <p class="ribbon-kicker">By Luden20 github.com/Luden20</p>
       <div class="ribbon-title-row">
         <h1>{name}</h1>
         <span class="meta-chip">{entityCount} entidades</span>
-        <span class="meta-chip meta-chip--quiet">Sesion local</span>
       </div>
       <p class="ribbon-hint">Acciones frecuentes, exportacion y cambio de vistas siempre visibles, sin romper el flujo de trabajo.</p>
     </div>
 
-    <button
-      class="theme-toggle control control--soft control--sm"
-      type="button"
-      on:click={onToggleTheme}
-      aria-label={themeMode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-    >
-      {#if themeMode === "dark"}
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M21 12.79A9 9 0 0 1 11.21 3a.75.75 0 0 0-.82.98 7.5 7.5 0 1 0 9.63 9.63.75.75 0 0 0 .98-.82Z"/>
-        </svg>
-        <span>Usar claro</span>
-      {:else}
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3.25a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V4a.75.75 0 0 1 .75-.75Zm0 14a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5Zm8.75-6a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5h1.5ZM5.25 12a.75.75 0 0 1-.75.75H3a.75.75 0 0 1 0-1.5h1.5a.75.75 0 0 1 .75.75Zm11.16 5.41a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM5.53 5.53a.75.75 0 0 1 1.06 0l1.06 1.06A.75.75 0 0 1 6.59 7.65L5.53 6.59a.75.75 0 0 1 0-1.06Zm12 0a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 0 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0Zm-12 12a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L5.53 18.6a.75.75 0 0 1 0-1.06ZM12 18.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75Z"/>
-        </svg>
-        <span>Usar oscuro</span>
-      {/if}
-    </button>
+    <div class="ribbon-head-side">
+      <button
+        class="theme-toggle control control--soft control--sm"
+        type="button"
+        on:click={onToggleTheme}
+        aria-label={themeMode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+      >
+        {#if themeMode === "dark"}
+          <ButtonIcon name="theme-light"/>
+          <span>Usar claro</span>
+        {:else}
+          <ButtonIcon name="theme-dark"/>
+          <span>Usar oscuro</span>
+        {/if}
+      </button>
+
+      <section class="ribbon-group ribbon-group--file ribbon-group--file-inline">
+        <p class="group-label">Archivo</p>
+        <div class="group-actions group-actions--file">
+          <button class="control control--primary" type="button" on:click={onSave}>
+            <ButtonIcon name="save"/>
+            <strong>Guardar</strong>
+          </button>
+          <button class="control control--danger" type="button" on:click={onExit}>
+            <ButtonIcon name="exit"/>
+            <strong>Salir</strong>
+          </button>
+          <div class="export-menu" bind:this={exportMenuEl}>
+            <button
+              bind:this={exportTriggerEl}
+              class="control control--soft control--sm export-trigger"
+              class:export-trigger--open={exportMenuOpen}
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={exportMenuOpen}
+              on:click={toggleExportMenu}
+            >
+              <ButtonIcon name="download"/>
+              <span>Exportar</span>
+              <ButtonIcon name={exportMenuOpen ? "arrow-up" : "arrow-down"}/>
+            </button>
+
+            {#if exportMenuOpen}
+              <div class="export-popover" role="menu" aria-label="Opciones de exportacion">
+                <button class="export-option" type="button" role="menuitem" on:click={() => handleExportAction("full")}>
+                  <strong>Con relaciones</strong>
+                  <span>Excel completo</span>
+                </button>
+                <button class="export-option" type="button" role="menuitem" on:click={() => handleExportAction("plain")}>
+                  <strong>Sin relaciones</strong>
+                  <span>Combinaciones</span>
+                </button>
+              </div>
+            {/if}
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 
   <div class="ribbon-grid">
-    <section class="ribbon-group">
-      <p class="group-label">Archivo</p>
-      <div class="group-actions">
-        <button class="ribbon-btn control control--stack control--primary" type="button" on:click={onSave}>
-          <strong>Guardar</strong>
-          <span class="control__meta">Persistir cambios</span>
-        </button>
-        <button class="ribbon-btn control control--stack control--danger" type="button" on:click={onExit}>
-          <strong>Salir</strong>
-          <span class="control__meta">Cerrar proyecto</span>
-        </button>
-      </div>
-    </section>
-
-    <section class="ribbon-group">
-      <p class="group-label">Exportar</p>
-      <div class="group-actions group-actions--wide">
-        <button class="ribbon-btn control control--stack control--soft" type="button" on:click={onExport}>
-          <strong>Con relaciones</strong>
-          <span class="control__meta">Excel completo</span>
-        </button>
-        <button class="ribbon-btn control control--stack control--soft" type="button" on:click={onExportWithoutRelations}>
-          <strong>Sin relaciones</strong>
-          <span class="control__meta">Combinaciones</span>
-        </button>
-      </div>
-    </section>
-
     <section class="ribbon-group ribbon-group--views">
       <p class="group-label">Vistas</p>
       <div class="view-strip">
@@ -90,6 +138,7 @@
             type="button"
             on:click={() => onSelect(item.key)}
           >
+            <ButtonIcon name={item.icon}/>
             <span class="view-tab__label">{item.label}</span>
             <span class="view-tab__hint control__meta">{item.hint}</span>
           </button>
@@ -103,7 +152,7 @@
   .workspace-ribbon {
     position: sticky;
     top: 0.7rem;
-    z-index: 30;
+    z-index: var(--layer-ribbon);
     display: grid;
     gap: 0.8rem;
     padding: clamp(0.9rem, 1.2vw, 1.05rem) clamp(0.95rem, 1.4vw, 1.2rem) clamp(0.95rem, 1.3vw, 1.1rem);
@@ -114,7 +163,8 @@
       linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 36%);
     box-shadow: var(--shadow-lg);
     backdrop-filter: blur(18px);
-    overflow: hidden;
+    overflow: visible;
+    isolation: isolate;
   }
 
   .workspace-ribbon::before {
@@ -125,22 +175,31 @@
       linear-gradient(90deg, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px),
       linear-gradient(color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px);
     background-size: 22px 22px;
+    border-radius: inherit;
     mask-image: linear-gradient(180deg, black, transparent 72%);
     pointer-events: none;
     opacity: 0.55;
   }
 
-  .ribbon-head,
+  .ribbon-head {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.9rem 1rem;
+  }
+
   .ribbon-grid {
     position: relative;
     z-index: 1;
   }
 
-  .ribbon-head {
+  .ribbon-head-side {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 0.9rem 1rem;
+    justify-items: end;
+    gap: 0.6rem;
+    min-width: min(100%, 28rem);
   }
 
   .ribbon-copy {
@@ -204,13 +263,14 @@
 
   .ribbon-grid {
     display: grid;
-    grid-template-columns: minmax(15rem, 0.92fr) minmax(18rem, 1.08fr) minmax(22rem, 1.65fr);
-    gap: 0.72rem;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+    align-items: start;
   }
 
   .ribbon-group {
     display: grid;
+    min-width: 0;
     gap: 0.65rem;
     padding: 0.78rem 0.82rem;
     border-radius: calc(var(--radius-md) - 6px);
@@ -229,9 +289,85 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .ribbon-btn {
-    justify-content: stretch;
-    min-height: 4.55rem;
+  .group-actions--file {
+    grid-template-columns: auto auto auto;
+    align-items: center;
+  }
+
+  .ribbon-group--file {
+    align-self: start;
+    justify-self: start;
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .ribbon-group--file-inline {
+    justify-self: end;
+  }
+
+  .export-menu {
+    position: relative;
+    align-self: center;
+  }
+
+  .export-trigger {
+    min-width: 9rem;
+    justify-content: space-between;
+    gap: 0.45rem;
+  }
+
+  .export-trigger--open {
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+    box-shadow:
+      0 14px 22px color-mix(in srgb, var(--ink) 10%, transparent),
+      0 0 0 0.18rem color-mix(in srgb, var(--accent) 10%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
+  }
+
+  .export-popover {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    left: 0;
+    z-index: calc(var(--layer-ribbon) + 2);
+    display: grid;
+    gap: 0.35rem;
+    min-width: 12.5rem;
+    padding: 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--popover-surface);
+    box-shadow: var(--shadow-sm);
+    white-space: nowrap;
+  }
+
+  .export-option {
+    display: grid;
+    gap: 0.12rem;
+    width: 100%;
+    padding: 0.68rem 0.78rem;
+    border: 0;
+    border-radius: 0.78rem;
+    background: transparent;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+  }
+
+  .export-option strong {
+    font-size: 0.9rem;
+    font-weight: 800;
+  }
+
+  .export-option span {
+    color: var(--ink-faint);
+    font-size: 0.76rem;
+    font-weight: 700;
+  }
+
+  .export-option:hover {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    transform: translateY(-1px);
   }
 
   .ribbon-group--views {
@@ -261,11 +397,7 @@
 
   @media (max-width: 1320px) {
     .ribbon-grid {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-
-    .ribbon-group--views {
-      grid-column: 1 / -1;
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 
@@ -288,15 +420,37 @@
       grid-template-columns: 1fr;
     }
 
+    .ribbon-head-side {
+      min-width: 0;
+      justify-items: stretch;
+    }
+
     .theme-toggle {
       width: 100%;
       justify-self: stretch;
     }
 
     .group-actions,
+    .group-actions--file,
     .group-actions--wide,
     .view-strip {
       grid-template-columns: 1fr;
+    }
+
+    .export-menu,
+    .export-trigger {
+      width: 100%;
+    }
+
+    .ribbon-group--file-inline {
+      justify-self: stretch;
+      width: 100%;
+    }
+
+    .export-popover {
+      right: 0;
+      left: 0;
+      min-width: 0;
     }
   }
 </style>

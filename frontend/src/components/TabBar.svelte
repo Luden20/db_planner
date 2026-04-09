@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ButtonIcon from "./ButtonIcon.svelte";
+
   export let activeTab:'entities' | 'relations' | 'tertiary';
   export let onSelect:(tab:'entities' | 'relations' | 'tertiary') => void;
 </script>
@@ -9,6 +11,7 @@
     class={`control control--stack ${activeTab === 'entities' ? 'control--accent control--active' : 'control--ghost'}`}
     on:click={() => onSelect('entities')}
   >
+    <ButtonIcon name="database"/>
     <span class="tab-title">Entidades</span>
     <span class="tab-hint">Base estructural</span>
   </button>
@@ -17,6 +20,7 @@
     class={`control control--stack ${activeTab === 'relations' ? 'control--accent control--active' : 'control--ghost'}`}
     on:click={() => onSelect('relations')}
   >
+    <ButtonIcon name="relations"/>
     <span class="tab-title">Relaciones</span>
     <span class="tab-hint">Mapa combinatorio</span>
   </button>
@@ -25,6 +29,7 @@
     class={`control control--stack ${activeTab === 'tertiary' ? 'control--accent control--active' : 'control--ghost'}`}
     on:click={() => onSelect('tertiary')}
   >
+    <ButtonIcon name="attributes"/>
     <span class="tab-title">Atributos</span>
     <span class="tab-hint">Detalle por entidad</span>
   </button>

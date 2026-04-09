@@ -2,6 +2,8 @@
   import {onMount, tick} from "svelte";
   import type {utils} from "../../wailsjs/go/models";
   import {AddRelation, GetCombinatory, MarkEntityStatus, RemoveRelation} from "../../wailsjs/go/main/App";
+  import ButtonIcon from "./ButtonIcon.svelte";
+  import EntityFocusCard from "./EntityFocusCard.svelte";
   import CreateEntity from "./forms/CreateEntity.svelte";
   import {showToast} from "../lib/toast";
 
@@ -367,10 +369,12 @@
       <div class="toolbar-actions relations-toolbar__actions">
         <div class="view-jumps">
           <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={!comb.length}>
-            Ir a definicion
+            <ButtonIcon name="database"/>
+            <span>Ir a definicion</span>
           </button>
           <button class="control control--accent" on:click={() => jumpToTab("tertiary")} disabled={!comb.length}>
-            Ir a atributos
+            <ButtonIcon name="attributes"/>
+            <span>Ir a atributos</span>
           </button>
         </div>
         <select
@@ -385,14 +389,10 @@
         </select>
         <div class="entity-nav">
           <button class="control control--icon control--soft" on:click={prevSlide} aria-label="Entidad anterior" disabled={comb.length <= 1}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
-            </svg>
+            <ButtonIcon name="chevron-left"/>
           </button>
           <button class="control control--icon control--soft" on:click={nextSlide} aria-label="Entidad siguiente" disabled={comb.length <= 1}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
-            </svg>
+            <ButtonIcon name="chevron-right"/>
           </button>
         </div>
       </div>
@@ -406,28 +406,17 @@
   <div class="relations-layout">
     <aside class="relations-deck">
       {#if comb[activeIndex]}
-        <header
-          class:slide-head={true}
-          class:slide-head--approved={isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
-          style={`view-transition-name: relation-head-${comb[activeIndex].IdPrincipalEntity};`}
+        <EntityFocusCard
+          kicker="Entidad principal"
+          name={comb[activeIndex].PrincipalEntity}
+          description={currentPrincipalEntity?.Description || "Sin definición."}
+          approved={isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
+          transitionName={`relation-head-${comb[activeIndex].IdPrincipalEntity}`}
         >
-          <div class="slide-head-copy">
-            <p class="label">Entidad principal</p>
-            <div class="entity-title-row">
-              <h3>{comb[activeIndex].PrincipalEntity}</h3>
-              {#if isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
-                <span class="status-pill status-pill--approved">&#10003;</span>
-              {/if}
-            </div>
-            <p class="entity-description">{currentPrincipalEntity?.Description || "Sin definición."}</p>
-          </div>
-          <div class="head-meta head-meta--actions">
-            <div>
-              <p class="mini-label">ID</p>
-              <p class="id-pill">{comb[activeIndex].IdPrincipalEntity}</p>
-            </div>
+          <div slot="actions" class="entity-focus-actions">
             <CreateEntity
               id={comb[activeIndex].IdPrincipalEntity}
+              triggerLabel="Editar"
               onSave={async () => {
                 await load(true);
                 await onRefresh();
@@ -438,10 +427,11 @@
               on:click={togglePrincipalApproval}
               disabled={updating}
             >
-              {isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "Quitar aprobación" : "Aprobar entidad"}
+              <ButtonIcon name={isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "check-off" : "check"}/>
+              <span>{isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "Quitar" : "Aprobar"}</span>
             </button>
           </div>
-        </header>
+        </EntityFocusCard>
       {/if}
     </aside>
 
@@ -479,7 +469,7 @@
                             aria-label="Ayuda de la relación"
                             on:click|stopPropagation
                           >
-                            ...
+                            <ButtonIcon name="eye"/>
                           </button>
                           <span class="relation-tooltip">
                             {getEntityDefinition(relation.IdEntity2)}
@@ -529,10 +519,12 @@
   >
     <p class="context-title">{relationMenu.principalName} -> {relationMenu.targetName}</p>
     <button class="menu-action control control--sm control--block control--accent" on:click={goToRelatedEntityAttributes}>
-      Ir a atributos
+      <ButtonIcon name="attributes"/>
+      <span>Ir a atributos</span>
     </button>
     <button class="menu-action control control--sm control--block control--ghost" on:click={goToRelatedEntityRelations}>
-      Ir a esta relacion
+      <ButtonIcon name="relations"/>
+      <span>Ir a esta relacion</span>
     </button>
   </div>
 {/if}
@@ -652,81 +644,6 @@
     box-shadow: inset 0 0 0 1px rgba(73, 150, 78, 0.18);
   }
 
-  .slide-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    background: #0f1726;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 12px;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
-    border-top: 0;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-  }
-
-  .slide-head--approved {
-    background: linear-gradient(135deg, rgba(17, 45, 25, 0.96), rgba(21, 57, 31, 0.96));
-    border-color: rgba(113, 201, 118, 0.35);
-  }
-
-  .slide-head h3 {
-    margin: 4px 0 0;
-    font-size: 18px;
-  }
-
-  .slide-head-copy {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .entity-title-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .entity-description {
-    margin: 10px 0 0;
-    color: #d9e4f5;
-    opacity: 0.82;
-    line-height: 1.45;
-  }
-
-  .head-meta {
-    text-align: right;
-  }
-
-  .head-meta--actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .mini-label {
-    margin: 0;
-    color: #9ab5e4;
-    font-size: 11px;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-  }
-
-  .id-pill {
-    margin: 4px 0 0;
-    padding: 6px 10px;
-    background: rgba(109, 216, 255, 0.12);
-    border: 1px solid rgba(109, 216, 255, 0.35);
-    color: #cfeeff;
-    border-radius: 10px;
-    font-weight: 700;
-    font-size: 13px;
-  }
-
   .table-wrapper {
     overflow: visible;
   }
@@ -763,23 +680,6 @@
   .entities-table tbody tr.relation-row-menu-open {
     background: rgba(90, 209, 255, 0.16);
     box-shadow: inset 0 0 0 1px rgba(90, 209, 255, 0.34);
-  }
-
-  .status-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .status-pill--approved {
-    color: #dff7df;
-    background: rgba(76, 175, 80, 0.2);
-    border: 1px solid rgba(113, 201, 118, 0.35);
-    min-width: 30px;
-    justify-content: center;
   }
 
   .entities-table.compact td {
@@ -935,11 +835,6 @@
       width: 100%;
     }
 
-    .slide-head {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
   }
 
   .tab-toolbar {
@@ -950,20 +845,17 @@
   }
 
   .label,
-  .mini-label,
   .context-title {
     color: var(--accent);
     letter-spacing: 0.14em;
   }
 
-  .label,
-  .mini-label {
+  .label {
     font-size: 0.74rem;
     font-weight: 800;
   }
 
   .muted,
-  .entity-description,
   .counter {
     color: var(--ink-faint);
     opacity: 1;
@@ -983,42 +875,15 @@
     box-shadow: var(--focus-ring);
   }
 
-  .slide-head {
-    background: var(--panel-surface-strong);
-    border-color: var(--border);
-    box-shadow: var(--shadow-sm);
-    border-top: 1px solid var(--border);
-    border-radius: calc(var(--radius-md) - 4px);
-  }
-
-  .slide-head--approved {
-    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
-    background: var(--panel-surface-success);
-  }
-
-  .slide-head h3,
   .relation-name-cell,
   .entities-table {
     color: var(--ink);
   }
 
-  .status-pill,
   .pill {
     background: var(--chip-surface);
     border-color: var(--line-soft);
     color: var(--ink-soft);
-  }
-
-  .id-pill {
-    background: var(--chip-accent-surface);
-    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-    color: var(--accent-strong);
-  }
-
-  .status-pill--approved {
-    background: var(--chip-success-surface);
-    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
-    color: var(--success);
   }
 
   .slide {
@@ -1107,15 +972,13 @@
   }
 
   .relations-toolbar,
-  .slide-shell,
-  .slide-head {
+  .slide-shell {
     position: relative;
     overflow: clip;
   }
 
   .relations-toolbar::before,
-  .slide-shell::before,
-  .slide-head::before {
+  .slide-shell::before {
     content: "";
     position: absolute;
     inset: 0 auto auto 0;

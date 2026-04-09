@@ -22,6 +22,7 @@
     Save
   } from "../../wailsjs/go/main/App";
   import type { utils } from "../../wailsjs/go/models";
+  import ButtonIcon from "./ButtonIcon.svelte";
   import ModalLauncher from "./ModalLauncher.svelte";
   import { showToast } from "../lib/toast";
 
@@ -908,6 +909,7 @@
               style={`view-transition-name: macro-flow-${bigProcess.Id};`}
             >
               <span class="macro-card__index">{String(index + 1).padStart(2, "0")}</span>
+              <ButtonIcon name="flows"/>
               <strong>{bigProcess.Name}</strong>
               <span class="macro-card__meta">{(bigProcess.Processes ?? []).length} procesos · {countBigProcessSteps(bigProcess)} pasos</span>
               <span class="macro-card__hint">{bigProcess.Description || "Sin descripción todavía."}</span>
@@ -968,6 +970,7 @@
                   on:click={() => selectProcess(process.Id)}
                 >
                   <span class="process-rail-card__index">{String(index + 1).padStart(2, "0")}</span>
+                  <ButtonIcon name="stack"/>
                   <strong>{process.Name}</strong>
                   <span>{(process.Steps ?? []).length} pasos</span>
                 </button>
@@ -1011,7 +1014,7 @@
                 triggerLabel="Editar macroflujo"
                 title="Editar macroflujo"
                 confirmLabel="Guardar"
-                triggerVariant="accent"
+                triggerVariant="edit"
                 confirmVariant="primary"
                 size="form"
                 triggerClass="flow-modal-trigger flow-modal-trigger--hero"
@@ -1078,7 +1081,7 @@
                     triggerLabel="Editar"
                     title="Editar proceso"
                     confirmLabel="Guardar"
-                    triggerVariant="accent"
+                    triggerVariant="edit"
                     confirmVariant="primary"
                     size="form"
                     triggerClass="flow-modal-trigger flow-modal-trigger--inline"
@@ -1145,7 +1148,7 @@
                             triggerLabel="Editar"
                             title="Editar paso"
                             confirmLabel="Guardar"
-                            triggerVariant="accent"
+                            triggerVariant="edit"
                             confirmVariant="primary"
                             size="form"
                             triggerClass="flow-modal-trigger flow-modal-trigger--inline"
@@ -1248,7 +1251,7 @@
                                         triggerLabel="Editar"
                                         title="Editar recurso"
                                         confirmLabel="Guardar"
-                                        triggerVariant="accent"
+                                        triggerVariant="edit"
                                         confirmVariant="primary"
                                         size="form"
                                         triggerClass="flow-modal-trigger flow-modal-trigger--inline"
@@ -1561,6 +1564,12 @@
     font-size: 0.72rem;
     font-weight: 800;
     letter-spacing: 0.14em;
+  }
+
+  .process-rail-card :global(.button-glyph),
+  .macro-card :global(.button-glyph) {
+    color: var(--accent-strong);
+    opacity: 0.86;
   }
 
   .process-rail-card strong {

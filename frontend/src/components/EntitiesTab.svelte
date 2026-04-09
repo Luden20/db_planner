@@ -1,13 +1,15 @@
 <script lang="ts">
   import {onMount, tick} from "svelte";
   import type {utils} from "../../wailsjs/go/models";
+  import ButtonIcon from "./ButtonIcon.svelte";
   import CreateEntity from "./forms/CreateEntity.svelte";
   import DeleteEntity from "./forms/DeleteEntity.svelte";
+  import EditIntersectionEntity from "./forms/EditIntersectionEntity.svelte";
   import {MarkEntityStatus, MoveEntity, Save} from "../../wailsjs/go/main/App";
   import {showToast} from "../lib/toast";
 
   export let onSave: () => Promise<void> = async () => {};
-  export let entities: utils.Entity[] = [];
+  export let project: utils.DbProject;
   export let onJumpTo: (tab: "relations" | "tertiary", entityId: number) => void = () => {};
 
   let createEntityModal: CreateEntity | null = null;
@@ -22,6 +24,10 @@
   let activeSearchMatchId: number | null = null;
   let activeSearchMatchIndex = -1;
   let lastScrolledMatchId: number | null = null;
+  let activeScope: "strong" | "intersection" = "strong";
+  let entities: utils.Entity[] = [];
+  let intersectionEntities: utils.IntersectionEntity[] = [];
+  let filteredIntersectionEntities: utils.IntersectionEntity[] = [];
   let contextMenu: {
     open: boolean;
     x: number;
@@ -40,6 +46,7 @@
   const AUTO_SCROLL_STEP = 14;
   const isApproved = (entity: utils.Entity) => entity.Status === true;
   const approvedCount = () => entities.filter((entity) => isApproved(entity)).length;
+  const entityTypeLabel = (entity: utils.Entity) => entity.TableType === "intersection" ? "Interseccion" : "Fuerte";
   const normalizeSearchText = (value: string) =>
     value
       .normalize("NFD")
@@ -53,6 +60,24 @@
     }
     const haystack = normalizeSearchText(`${entity.Name} ${entity.Description || ""}`);
     return haystack.includes(normalizedSearchQuery);
+  };
+
+  const intersectionMatchesSearch = (item: utils.IntersectionEntity) => {
+    if (!normalizedSearchQuery) {
+      return true;
+    }
+    const haystack = normalizeSearchText(`${item.Entity.Name} ${item.Entity.Description || ""} ${intersectionSourceLabel(item)}`);
+    return haystack.includes(normalizedSearchQuery);
+  };
+
+  const intersectionSourceLabel = (item: utils.IntersectionEntity) => {
+    const relation = project?.Relations?.find((current) => current.Id === item.RelationID);
+    if (!relation) {
+      return "Sin relación asociada";
+    }
+    const left = entities.find((entity) => entity.Id === relation.IdEntity1)?.Name ?? `Tabla ${relation.IdEntity1}`;
+    const right = entities.find((entity) => entity.Id === relation.IdEntity2)?.Name ?? `Tabla ${relation.IdEntity2}`;
+    return `${left} <-> ${right}`;
   };
 
   const isSearchMatch = (entityId: number) => searchMatchIds.includes(entityId);
@@ -84,7 +109,7 @@
   };
 
   const handleSearchKeydown = (event: KeyboardEvent) => {
-    if (event.key !== "Enter" || searchMatchIds.length === 0) {
+    if (activeScope !== "strong" || event.key !== "Enter" || searchMatchIds.length === 0) {
       return;
     }
     event.preventDefault();
@@ -254,6 +279,12 @@
     }
   };
 
+  const switchScope = (scope: "strong" | "intersection") => {
+    activeScope = scope;
+    clearDrag();
+    closeContextMenu();
+  };
+
   const toggleEntityApproval = async (entity: utils.Entity) => {
     try {
       await MarkEntityStatus(entity.Id, !isApproved(entity));
@@ -272,10 +303,15 @@
     };
   });
 
+  $: entities = project?.Entities ?? [];
+  $: intersectionEntities = project?.IntersectionEntities ?? [];
   $: normalizedSearchQuery = normalizeSearchText(searchQuery);
+  $: filteredIntersectionEntities = normalizedSearchQuery
+    ? intersectionEntities.filter(intersectionMatchesSearch)
+    : intersectionEntities;
 
   $: {
-    const nextMatchIds = normalizedSearchQuery
+    const nextMatchIds = activeScope === "strong" && normalizedSearchQuery
       ? entities.filter(entityMatchesSearch).map((entity) => entity.Id)
       : [];
     searchMatchIds = nextMatchIds;
@@ -306,17 +342,43 @@
   <div class="tab-toolbar tab-toolbar--studio">
     <div>
       <p class="label">Entidades</p>
-      <p class="muted">Inventario central del modelo. Busca, aprueba y reordena entidades sin salir del estudio.</p>
+      <p class="muted">Gestiona entidades fuertes e intersecciones N:N desde el mismo estudio.</p>
     </div>
     <div class="entities-toolbar__side">
+      <div class="scope-switch" role="tablist" aria-label="Tipo de entidad">
+        <button
+          class={`scope-switch__item ${activeScope === 'strong' ? 'scope-switch__item--active' : ''}`}
+          type="button"
+          role="tab"
+          aria-selected={activeScope === "strong"}
+          on:click={() => switchScope("strong")}
+        >
+          Fuertes
+        </button>
+        <button
+          class={`scope-switch__item ${activeScope === 'intersection' ? 'scope-switch__item--active' : ''}`}
+          type="button"
+          role="tab"
+          aria-selected={activeScope === "intersection"}
+          on:click={() => switchScope("intersection")}
+        >
+          Intersección
+        </button>
+      </div>
       <div class="entities-toolbar__meta">
-        <span class="studio-chip">{entities.length} entidades</span>
-        <span class="studio-chip studio-chip--quiet">{approvedCount()} aprobadas</span>
-        {#if normalizedSearchQuery}
+        <span class="studio-chip">{activeScope === "strong" ? entities.length : intersectionEntities.length} {activeScope === "strong" ? "fuertes" : "intersecciones"}</span>
+        {#if activeScope === "strong"}
+          <span class="studio-chip studio-chip--quiet">{approvedCount()} aprobadas</span>
+        {/if}
+        {#if normalizedSearchQuery && activeScope === "strong"}
           <span class="studio-chip studio-chip--quiet">{searchMatchIds.length} coincidencias</span>
+        {:else if normalizedSearchQuery && activeScope === "intersection"}
+          <span class="studio-chip studio-chip--quiet">{filteredIntersectionEntities.length} coincidencias</span>
         {/if}
       </div>
-      <CreateEntity onSave={onSave}/>
+      {#if activeScope === "strong"}
+        <CreateEntity onSave={onSave}/>
+      {/if}
     </div>
   </div>
 
@@ -335,36 +397,35 @@
               class="search-input"
               type="search"
               bind:value={searchQuery}
-              placeholder="Buscar entidad por nombre o descripción"
-              aria-label="Buscar entidad"
+              placeholder={activeScope === "strong" ? "Buscar entidad por nombre o descripción" : "Buscar intersección por nombre, descripción o relación"}
+              aria-label={activeScope === "strong" ? "Buscar entidad" : "Buscar entidad de intersección"}
               on:keydown={handleSearchKeydown}
             />
             {#if searchQuery}
               <button class="control control--sm control--ghost" on:click={clearSearch} aria-label="Limpiar búsqueda">
-                Limpiar
+                <ButtonIcon name="clear"/>
+                <span>Limpiar</span>
               </button>
             {/if}
           </div>
 
           <div class="search-meta">
-            {#if normalizedSearchQuery}
+            {#if normalizedSearchQuery && activeScope === "strong"}
               {#if searchMatchIds.length}
                 <span class="search-count">
                   {activeSearchMatchIndex + 1} de {searchMatchIds.length}
                 </span>
                 <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(-1)} aria-label="Coincidencia anterior">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
-                  </svg>
+                  <ButtonIcon name="chevron-left"/>
                 </button>
                 <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(1)} aria-label="Siguiente coincidencia">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
-                  </svg>
+                  <ButtonIcon name="chevron-right"/>
                 </button>
               {:else}
                 <span class="search-empty">Sin coincidencias</span>
               {/if}
+            {:else if normalizedSearchQuery}
+              <span class="search-count">{filteredIntersectionEntities.length} coincidencias</span>
             {/if}
           </div>
         </div>
@@ -374,14 +435,18 @@
         <p class="label">Atajos</p>
         <div class="entities-side-card__stack">
           <div class="entities-side-stat">
-            <span class="entities-side-stat__value">{entities.length}</span>
-            <span class="entities-side-stat__label">entidades en el inventario</span>
+            <span class="entities-side-stat__value">{activeScope === "strong" ? entities.length : intersectionEntities.length}</span>
+            <span class="entities-side-stat__label">{activeScope === "strong" ? "entidades fuertes en el inventario" : "entidades de intersección detectadas"}</span>
           </div>
-          <div class="entities-side-stat">
-            <span class="entities-side-stat__value">{approvedCount()}</span>
-            <span class="entities-side-stat__label">listas para seguir en el flujo</span>
-          </div>
-          <p class="muted entities-side-note">Click derecho en una fila para saltar a atributos, relaciones o insertar arriba y abajo.</p>
+          {#if activeScope === "strong"}
+            <div class="entities-side-stat">
+              <span class="entities-side-stat__value">{approvedCount()}</span>
+              <span class="entities-side-stat__label">listas para seguir en el flujo</span>
+            </div>
+            <p class="muted entities-side-note">Click derecho en una fila para saltar a atributos, relaciones o insertar arriba y abajo.</p>
+          {:else}
+            <p class="muted entities-side-note">Las entidades de intersección se generan automáticamente cuando una relación N:N existe o aparece al leer el JSON.</p>
+          {/if}
         </div>
       </section>
     </aside>
@@ -390,68 +455,98 @@
       <div class="entities-panel__head">
         <div>
           <p class="label">Inventario</p>
-          <p class="muted">Arrastra filas para reordenar el modelo. Click derecho abre acciones rápidas de contexto.</p>
+          <p class="muted">{activeScope === "strong" ? "Arrastra filas para reordenar el modelo. Click derecho abre acciones rápidas de contexto." : "El nombre nace de la relación N:N. Solo puedes documentar su descripción."}</p>
         </div>
-        <span class="entities-panel__hint">Reordenamiento directo</span>
       </div>
 
       <div
         class="table-wrapper"
         bind:this={tableWrapper}
-        on:dragover={handleTableDragOver}
-        on:dragleave={handleTableDragLeave}
-        on:drop={stopAutoScroll}
+        on:dragover={activeScope === "strong" ? handleTableDragOver : undefined}
+        on:dragleave={activeScope === "strong" ? handleTableDragLeave : undefined}
+        on:drop={activeScope === "strong" ? stopAutoScroll : undefined}
       >
         <table class="entities-table">
           <thead>
           <tr>
             <th>Nombre</th>
             <th>Descripción</th>
-            <th style="width: 240px;">Acciones</th>
+            {#if activeScope === "intersection"}
+              <th>Relación origen</th>
+              <th style="width: 160px;">Acciones</th>
+            {:else}
+              <th style="width: 240px;">Acciones</th>
+            {/if}
           </tr>
           </thead>
 
           <tbody class="draggable-body">
-          {#each entities as entity, index (entity.Id)}
-            <tr
-              class:approved={isApproved(entity)}
-              class:search-match={isSearchMatch(entity.Id)}
-              class:search-match-active={activeSearchMatchId === entity.Id}
-              class:dragging={draggingIndex === index}
-              class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
-              data-entity-row={entity.Id}
-              draggable="true"
-              style={`view-transition-name: entity-row-${entity.Id};`}
-              on:dragstart={(event) => startDrag(index, event)}
-              on:dragover={(event) => handleDragOver(index, event)}
-              on:dragenter={(event) => handleDragOver(index, event)}
-              on:drop={(event) => handleDrop(index, event)}
-              on:dragend={clearDrag}
-              on:contextmenu={(event) => openContextMenu(entity, event)}
-            >
-              <td>
-                <div class="entity-cell">
-                  <span>{entity.Name}</span>
-                  {#if isApproved(entity)}
-                    <span class="status-pill status-pill--approved">&#10003;</span>
-                  {/if}
-                </div>
-              </td>
-              <td>{entity.Description}</td>
-              <td>
-                <div class="row-actions">
-                  <button
-                    class={`control control--sm control--success ${isApproved(entity) ? 'control--active' : ''}`}
-                    on:click={() => toggleEntityApproval(entity)}
-                  >
-                    {isApproved(entity) ? "Quitar aprobación" : "Aprobar"}
-                  </button>
-                  <CreateEntity onSave={onSave} id={entity.Id}/>
-                  <DeleteEntity onSave={onSave} id={entity.Id}/>
-                </div>
-              </td>
+          {#if activeScope === "strong"}
+            {#each entities as entity, index (entity.Id)}
+              <tr
+                class:approved={isApproved(entity)}
+                class:search-match={isSearchMatch(entity.Id)}
+                class:search-match-active={activeSearchMatchId === entity.Id}
+                class:dragging={draggingIndex === index}
+                class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
+                data-entity-row={entity.Id}
+                draggable="true"
+                style={`view-transition-name: entity-row-${entity.Id};`}
+                on:dragstart={(event) => startDrag(index, event)}
+                on:dragover={(event) => handleDragOver(index, event)}
+                on:dragenter={(event) => handleDragOver(index, event)}
+                on:drop={(event) => handleDrop(index, event)}
+                on:dragend={clearDrag}
+                on:contextmenu={(event) => openContextMenu(entity, event)}
+              >
+                <td>
+                  <div class="entity-cell">
+                    <span>{entity.Name}</span>
+                    <span class="status-pill status-pill--type">{entityTypeLabel(entity)}</span>
+                    {#if isApproved(entity)}
+                      <span class="status-pill status-pill--approved">&#10003;</span>
+                    {/if}
+                  </div>
+                </td>
+                <td>{entity.Description}</td>
+                <td>
+                  <div class="row-actions">
+                    <button
+                      class={`control control--sm control--success ${isApproved(entity) ? 'control--active' : ''}`}
+                      on:click={() => toggleEntityApproval(entity)}
+                    >
+                      <ButtonIcon name={isApproved(entity) ? "check-off" : "check"}/>
+                      <span>{isApproved(entity) ? "Quitar aprobación" : "Aprobar"}</span>
+                    </button>
+                    <CreateEntity onSave={onSave} id={entity.Id}/>
+                    <DeleteEntity onSave={onSave} id={entity.Id}/>
+                  </div>
+                </td>
+              </tr>
+            {/each}
+          {:else if filteredIntersectionEntities.length === 0}
+            <tr class="empty-row" draggable="false">
+              <td colspan="4">{normalizedSearchQuery ? "No hay intersecciones que coincidan." : "No hay entidades de intersección todavía."}</td>
             </tr>
-          {/each}
+          {:else}
+            {#each filteredIntersectionEntities as item (item.RelationID)}
+              <tr data-entity-row={`intersection-${item.RelationID}`}>
+                <td>
+                  <div class="entity-cell">
+                    <span>{item.Entity.Name}</span>
+                    <span class="status-pill status-pill--type">Intersección</span>
+                  </div>
+                </td>
+                <td>{item.Entity.Description}</td>
+                <td>{intersectionSourceLabel(item)}</td>
+                <td>
+                  <div class="row-actions">
+                    <EditIntersectionEntity item={item} onSave={onSave}/>
+                  </div>
+                </td>
+              </tr>
+            {/each}
+          {/if}
           </tbody>
         </table>
       </div>
@@ -468,17 +563,21 @@
   >
     <p class="context-title">{contextMenu.entityName}</p>
     <button class="menu-action control control--sm control--block control--accent" on:click={() => handleJumpFromContext("tertiary")}>
-      Ir a atributos
+      <ButtonIcon name="attributes"/>
+      <span>Ir a atributos</span>
     </button>
     <button class="menu-action control control--sm control--block control--accent" on:click={() => handleJumpFromContext("relations")}>
-      Ir a relaciones
+      <ButtonIcon name="relations"/>
+      <span>Ir a relaciones</span>
     </button>
     <div class="context-divider"></div>
     <button class="menu-action control control--sm control--block control--ghost" on:click={() => handleInsertFromContext("above")}>
-      Insertar arriba
+      <ButtonIcon name="arrow-up"/>
+      <span>Insertar arriba</span>
     </button>
     <button class="menu-action control control--sm control--block control--ghost" on:click={() => handleInsertFromContext("below")}>
-      Insertar abajo
+      <ButtonIcon name="arrow-down"/>
+      <span>Insertar abajo</span>
     </button>
   </div>
 {/if}
@@ -669,6 +768,12 @@
     border: 1px solid rgba(113, 201, 118, 0.35);
     min-width: 30px;
     justify-content: center;
+  }
+
+  .status-pill--type {
+    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   }
 
   .context-menu {
@@ -894,6 +999,38 @@
     flex-wrap: wrap;
   }
 
+  .scope-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 999px;
+    border: 1px solid var(--line-soft);
+    background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+  }
+
+  .scope-switch__item {
+    min-height: 2.2rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+  }
+
+  .scope-switch__item:hover {
+    transform: translateY(-1px);
+  }
+
+  .scope-switch__item--active {
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    color: var(--accent-strong);
+  }
+
   .entities-toolbar__meta,
   .search-toolbar__controls {
     display: flex;
@@ -1014,6 +1151,12 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     white-space: nowrap;
+  }
+
+  .empty-row td {
+    color: var(--ink-faint);
+    text-align: center;
+    padding-block: 1.2rem;
   }
 
   @media (max-width: 720px) {

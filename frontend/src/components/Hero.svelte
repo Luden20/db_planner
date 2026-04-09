@@ -5,14 +5,10 @@
 
 <section class="hero">
   <div class="hero-text">
-    <p class="kicker">DB Planner / Desktop Workspace</p>
-    <h1>Modela tu esquema con una interfaz mas sobria y respirable.</h1>
-    <p class="hint">Carga un proyecto existente o crea uno nuevo para organizar entidades, relaciones y atributos desde una sola vista de trabajo.</p>
-    <div class="hero-notes">
-      <span>Persistencia JSON</span>
-      <span>Exportacion Excel</span>
-      <span>Navegacion por entidad</span>
-    </div>
+    <p class="kicker">DB Planner </p>
+    <h1>Modela tu esquema de base de datos de forma facil</h1>
+    <p class="hint">Por Alfonso Chafla (Propiedad intelectual)</p>
+
   </div>
   <div class="hero-actions">
     <button class="btn secondary" on:click={onOpen}>

@@ -2,7 +2,9 @@
   import {onMount, tick} from "svelte";
   import type {utils} from "../../wailsjs/go/models";
   import {GetCombinatory} from "../../wailsjs/go/main/App";
-  import {GetEntity, MarkEntityStatus, MoveAttribute, Save} from "../../wailsjs/go/main/App";
+  import {GetEntity, MarkEntityStatus, MoveAttribute, MoveIntersectionAttribute, Save} from "../../wailsjs/go/main/App";
+  import ButtonIcon from "./ButtonIcon.svelte";
+  import EntityFocusCard from "./EntityFocusCard.svelte";
   import CreateEntity from "./forms/CreateEntity.svelte";
   import AttributeForm from "./forms/AttributeForm.svelte";
   import DeleteAttribute from "./forms/DeleteAttribute.svelte";
@@ -19,24 +21,124 @@
     };
   };
 
-  export let entities: utils.Entity[] = [];
+  export let project: utils.DbProject;
   export let onRefresh: () => Promise<void> = async () => {};
   export let focusEntityId: number | null = null;
   export let onJumpTo: (tab: "entities" | "relations" | "tertiary", entityId?: number | null) => void = () => {};
 
+  let stickySentinel: HTMLDivElement | null = null;
+  let stickyStack: HTMLDivElement | null = null;
   let tableWrapper: HTMLDivElement | null = null;
+  let stickyStackHeight = 0;
+  let stickyStackPinned = false;
+  let activeScope: "strong" | "intersection" = "strong";
+  let entities: utils.Entity[] = [];
+  let intersectionEntities: utils.IntersectionEntity[] = [];
   let selectedId: number | null = null;
+  let selectedIntersectionRelationId: number | null = null;
   let current: utils.Entity | null = null;
+  let currentIntersection: utils.IntersectionEntity | null = null;
   let loading = false;
   let draggingIndex: number | null = null;
   let hoverIndex: number | null = null;
   let lastLoadedId: number | null = null;
   let lastSyncedFocusId: number | null = null;
   let relationSummary: RelationGroup[] = [];
+  let activeRelationType: string | null = null;
+  let activeRelationGroup: RelationGroup | null = null;
   let autoScrollFrame: number | null = null;
   let autoScrollDirection: -1 | 0 | 1 = 0;
   let approvalUpdating = false;
   let relationSummaryCount = 0;
+
+  type InheritedPK = {
+    entityName: string;
+    attributeName: string | null;
+    description: string | null;
+    type: string | null;
+    isIntersection?: boolean;
+  };
+
+  const getInheritedPKs = (entity: utils.Entity, project: utils.DbProject): InheritedPK[] => {
+    if (!entity || !project || !project.Relations) return [];
+    
+    const inherited: InheritedPK[] = [];
+    
+    // Buscar relaciones donde esta entidad sea el lado "N" de una relación 1:N
+    project.Relations.forEach(rel => {
+      let otherEntityId: number | null = null;
+      
+      // En rel.Relation, "1:N" significa IdEntity1 es 1 y IdEntity2 es N
+      // "N:1" significa IdEntity1 es N y IdEntity2 es 1
+      if (rel.IdEntity1 === entity.Id && rel.Relation === "N:1") {
+        otherEntityId = rel.IdEntity2;
+      } else if (rel.IdEntity2 === entity.Id && rel.Relation === "1:N") {
+        otherEntityId = rel.IdEntity1;
+      }
+
+      if (otherEntityId !== null) {
+        const otherEntity = project.Entities?.find(e => e.Id === otherEntityId);
+        if (otherEntity) {
+          const pkAttributes = otherEntity.Attributes?.filter(a => a.KeyType === "pk") || [];
+          if (pkAttributes.length > 0) {
+            pkAttributes.forEach(pk => {
+              inherited.push({
+                entityName: otherEntity.Name,
+                attributeName: pk.Name,
+                description: pk.Description,
+                type: pk.Type
+              });
+            });
+          } else {
+            inherited.push({
+              entityName: otherEntity.Name,
+              attributeName: null,
+              description: null,
+              type: null
+            });
+          }
+        }
+      }
+    });
+
+    return inherited;
+  };
+
+  const getIntersectionInheritedPKs = (intersection: utils.IntersectionEntity, project: utils.DbProject): InheritedPK[] => {
+    if (!intersection || !project || !project.Relations) return [];
+    
+    const rel = project.Relations.find(r => r.Id === intersection.RelationID);
+    if (!rel) return [];
+
+    const inherited: InheritedPK[] = [];
+    [rel.IdEntity1, rel.IdEntity2].forEach(id => {
+      const otherEntity = project.Entities?.find(e => e.Id === id);
+      if (otherEntity) {
+        const pkAttributes = otherEntity.Attributes?.filter(a => a.KeyType === "pk") || [];
+        if (pkAttributes.length > 0) {
+          pkAttributes.forEach(pk => {
+            inherited.push({
+              entityName: otherEntity.Name,
+              attributeName: pk.Name,
+              description: pk.Description,
+              type: pk.Type,
+              isIntersection: true
+            });
+          });
+        } else {
+          inherited.push({
+            entityName: otherEntity.Name,
+            attributeName: null,
+            description: null,
+            type: null,
+            isIntersection: true
+          });
+        }
+      }
+    });
+
+    return inherited;
+  };
 
   const AUTO_SCROLL_EDGE_PX = 72;
   const AUTO_SCROLL_STEP = 14;
@@ -114,17 +216,62 @@
     stopAutoScroll();
   };
 
+  const syncStickyState = () => {
+    if (!stickySentinel) {
+      stickyStackPinned = false;
+      return;
+    }
+
+    stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
+  };
+
+  const syncStickyStackHeight = () => {
+    stickyStackHeight = stickyStack?.offsetHeight ?? 0;
+  };
+
   onMount(() => {
     if (entities.length && selectedId === null) {
       selectedId = entities[0].Id;
     }
+    if (intersectionEntities.length && selectedIntersectionRelationId === null) {
+      selectedIntersectionRelationId = intersectionEntities[0].RelationID;
+    }
+
+    syncStickyStackHeight();
+    syncStickyState();
+
+    if (typeof ResizeObserver === "undefined" || !stickyStack) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      syncStickyStackHeight();
+    });
+    observer.observe(stickyStack);
+
+    return () => {
+      observer.disconnect();
+    };
   });
 
+  $: entities = project?.Entities ?? [];
+  $: intersectionEntities = project?.IntersectionEntities ?? [];
   $: if (entities.length && selectedId === null) {
     selectedId = entities[0].Id;
   }
+  $: if (!entities.some((entity) => entity.Id === selectedId)) {
+    selectedId = entities[0]?.Id ?? null;
+  }
+  $: if (intersectionEntities.length && selectedIntersectionRelationId === null) {
+    selectedIntersectionRelationId = intersectionEntities[0].RelationID;
+  }
+  $: if (!intersectionEntities.some((item) => item.RelationID === selectedIntersectionRelationId)) {
+    selectedIntersectionRelationId = intersectionEntities[0]?.RelationID ?? null;
+  }
+  $: currentIntersection = intersectionEntities.find((item) => item.RelationID === selectedIntersectionRelationId) ?? null;
 
   $: if (
+    activeScope === "strong" &&
     focusEntityId !== null &&
     focusEntityId !== lastSyncedFocusId &&
     entities.some(entity => entity.Id === focusEntityId)
@@ -138,11 +285,31 @@
   }
 
   $: relationSummaryCount = relationSummary.reduce((total, group) => total + group.items.length, 0);
+  $: if (!relationSummary.length) {
+    activeRelationType = null;
+  } else if (!activeRelationType || !relationSummary.some((group) => group.type === activeRelationType)) {
+    activeRelationType = relationSummary[0].type;
+  }
+  $: activeRelationGroup = relationSummary.find((group) => group.type === activeRelationType) ?? relationSummary[0] ?? null;
+  $: if (stickySentinel) {
+    syncStickyState();
+  }
+  $: if (stickyStack) {
+    syncStickyStackHeight();
+  }
 
   const loadEntity = async (id: number) => {
     loading = true;
     try {
       current = await GetEntity(id);
+      if (current && current.Attributes) {
+        // Sort PK to top
+        current.Attributes.sort((a, b) => {
+          if (a.KeyType === "pk") return -1;
+          if (b.KeyType === "pk") return 1;
+          return 0;
+        });
+      }
       lastLoadedId = id;
       await loadRelationSummary(current);
     } catch (err) {
@@ -175,9 +342,23 @@
     });
   };
 
+  const selectIntersection = async (relationId: number | null) => {
+    if (relationId === null || !intersectionEntities.some((item) => item.RelationID === relationId)) {
+      return;
+    }
+    await runAttributeTransition(async () => {
+      selectedIntersectionRelationId = relationId;
+      await tick();
+    });
+  };
+
   const handleSelectChange = async (event: Event) => {
     const target = event.target as HTMLSelectElement;
-    await selectEntity(Number(target?.value ?? 0));
+    if (activeScope === "strong") {
+      await selectEntity(Number(target?.value ?? 0));
+      return;
+    }
+    await selectIntersection(Number(target?.value ?? 0));
   };
 
   const handleDragOver = (index: number, event: DragEvent) => {
@@ -200,33 +381,56 @@
   };
 
   const nextEntity = async () => {
-    if (!entities.length) return;
-    const currentIndex = entities.findIndex((ent) => ent.Id === selectedId);
-    const nextIndex = currentIndex === -1 || currentIndex === entities.length - 1 ? 0 : currentIndex + 1;
-    await selectEntity(entities[nextIndex].Id);
+    if (activeScope === "strong") {
+      if (!entities.length) return;
+      const currentIndex = entities.findIndex((ent) => ent.Id === selectedId);
+      const nextIndex = currentIndex === -1 || currentIndex === entities.length - 1 ? 0 : currentIndex + 1;
+      await selectEntity(entities[nextIndex].Id);
+      return;
+    }
+    if (!intersectionEntities.length) return;
+    const currentIndex = intersectionEntities.findIndex((item) => item.RelationID === selectedIntersectionRelationId);
+    const nextIndex = currentIndex === -1 || currentIndex === intersectionEntities.length - 1 ? 0 : currentIndex + 1;
+    await selectIntersection(intersectionEntities[nextIndex].RelationID);
   };
 
   const prevEntity = async () => {
-    if (!entities.length) return;
-    const currentIndex = entities.findIndex((ent) => ent.Id === selectedId);
-    const prevIndex = currentIndex <= 0 ? entities.length - 1 : currentIndex - 1;
-    await selectEntity(entities[prevIndex].Id);
+    if (activeScope === "strong") {
+      if (!entities.length) return;
+      const currentIndex = entities.findIndex((ent) => ent.Id === selectedId);
+      const prevIndex = currentIndex <= 0 ? entities.length - 1 : currentIndex - 1;
+      await selectEntity(entities[prevIndex].Id);
+      return;
+    }
+    if (!intersectionEntities.length) return;
+    const currentIndex = intersectionEntities.findIndex((item) => item.RelationID === selectedIntersectionRelationId);
+    const prevIndex = currentIndex <= 0 ? intersectionEntities.length - 1 : currentIndex - 1;
+    await selectIntersection(intersectionEntities[prevIndex].RelationID);
   };
 
   const applyReorder = async (from: number, to: number) => {
-    if (!current || from === to || from < 0 || to < 0 || from >= current.Attributes.length || to >= current.Attributes.length) {
+    const attributes = activeScope === "strong"
+      ? (current?.Attributes ?? [])
+      : (currentIntersection?.Entity.Attributes ?? []);
+    if (from === to || from < 0 || to < 0 || from >= attributes.length || to >= attributes.length) {
       return;
     }
     const direction: "up" | "down" = to < from ? "up" : "down";
     const steps = Math.abs(to - from);
-    const attributeId = current.Attributes[from].Id;
+    const attributeId = attributes[from].Id;
     try {
       for (let i = 0; i < steps; i++) {
-        await MoveAttribute(current.Id, attributeId, direction);
+        if (activeScope === "strong" && current) {
+          await MoveAttribute(current.Id, attributeId, direction);
+        } else if (activeScope === "intersection" && currentIntersection) {
+          await MoveIntersectionAttribute(currentIntersection.RelationID, attributeId, direction);
+        }
       }
       await Save();
       await onRefresh();
-      await loadEntity(current.Id);
+      if (activeScope === "strong" && current) {
+        await loadEntity(current.Id);
+      }
     } catch (err) {
       const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
       showToast(`No se pudo reordenar el atributo: ${message}`, "error");
@@ -301,6 +505,23 @@
   };
 
   const isApproved = (entity: utils.Entity | null) => entity?.Status === true;
+  const attributeKeyLabel = (attribute: utils.Attribute) => attribute.KeyType === "pk" ? "PK" : "";
+  const intersectionOriginLabel = (item: utils.IntersectionEntity | null) => {
+    if (!item) {
+      return "Sin relación origen";
+    }
+    const relation = project?.Relations?.find((currentRelation) => currentRelation.Id === item.RelationID);
+    if (!relation) {
+      return "Sin relación origen";
+    }
+    const left = entities.find((entity) => entity.Id === relation.IdEntity1)?.Name ?? `Tabla ${relation.IdEntity1}`;
+    const right = entities.find((entity) => entity.Id === relation.IdEntity2)?.Name ?? `Tabla ${relation.IdEntity2}`;
+    return `${left} <-> ${right}`;
+  };
+  const switchScope = (scope: "strong" | "intersection") => {
+    activeScope = scope;
+    clearDrag();
+  };
 
   const toggleCurrentApproval = async () => {
     if (!current) {
@@ -321,134 +542,185 @@
   };
 
   const jumpToTab = (tab: "entities" | "relations") => {
-    onJumpTo(tab, selectedId);
+    onJumpTo(tab, activeScope === "strong" ? selectedId : null);
   };
+
+  const handleRelationTypeChange = (event: Event) => {
+    const target = event.target as HTMLSelectElement;
+    activeRelationType = target?.value || relationSummary[0]?.type || null;
+  };
+
 </script>
 
-<section class="attributes-studio">
-  <div class="tab-toolbar attributes-toolbar">
-    <div class="attributes-toolbar__copy">
-      <p class="label">Atributos</p>
-      <p class="muted">Recorre la entidad activa, reordena atributos y mantén visible su mapa relacional.</p>
-    </div>
-    <div class="attributes-toolbar__meta">
-      <span class="studio-chip">{entities.length} entidades</span>
-      <span class="studio-chip studio-chip--quiet">{current?.Attributes?.length ?? 0} atributos</span>
-      <span class="studio-chip studio-chip--quiet">{relationSummaryCount} cruces</span>
-    </div>
-    <div class="toolbar-actions attributes-toolbar__actions">
-      <div class="view-jumps">
-        <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={!selectedId}>
-          Ir a definicion
-        </button>
-        <button class="control control--accent" on:click={() => jumpToTab("relations")} disabled={!selectedId}>
-          Ir a combinatorio
-        </button>
-      </div>
-      <AttributeForm
-        entityId={selectedId ?? (entities[0]?.Id ?? 0)}
-        onSaved={async () => {
-          await onRefresh();
-          if (selectedId !== null) {
-            await loadEntity(selectedId);
-          }
-        }}
-      />
-      <select
-        class="entity-select"
-        bind:value={selectedId}
-        on:change={handleSelectChange}
-        disabled={!entities.length}
-      >
-        {#each entities as entity}
-          <option value={entity.Id}>{entity.Name}</option>
-        {/each}
-      </select>
-      <div class="entity-nav">
-        <button class="control control--icon control--soft" on:click={prevEntity} aria-label="Entidad anterior" disabled={entities.length <= 1}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L10.31 11l4.47 4.47a.75.75 0 0 1-1.06 1.06l-5-5a.75.75 0 0 1 0-1.06l5-5a.75.75 0 0 1 1.06 0Z"/>
-          </svg>
-        </button>
-        <button class="control control--icon control--soft" on:click={nextEntity} aria-label="Entidad siguiente" disabled={entities.length <= 1}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L13.69 11 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </div>
+<svelte:window on:scroll={syncStickyState} on:resize={syncStickyState}/>
 
-  {#if !entities.length}
-    <div class="empty-panel">Crea entidades para gestionar atributos.</div>
-  {:else if loading}
-    <div class="empty-panel">Cargando atributos...</div>
-  {:else if current}
-    <section class="attributes-stage">
-      <div class="attributes-layout">
-        <aside class="attributes-deck">
-          <div
-            class:entity-status-card={true}
-            class:entity-status-card--approved={isApproved(current)}
-            style={`view-transition-name: attribute-entity-${current.Id};`}
+<section class="attributes-studio" style={`--attributes-sticky-total-height: ${stickyStackHeight}px;`}>
+  <div class="attributes-sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
+  <div
+    class:attributes-sticky-stack={true}
+    class:attributes-sticky-stack--pinned={stickyStackPinned}
+    bind:this={stickyStack}
+  >
+    <div class="tab-toolbar attributes-toolbar">
+      <div class="attributes-toolbar__copy">
+        <p class="label">Atributos</p>
+        <p class="muted">{activeScope === "strong" ? "Recorre la entidad activa, reordena atributos y mantén visible su mapa relacional." : "Administra atributos de las entidades de intersección sin definir PK manualmente."}</p>
+      </div>
+      <div class="attributes-toolbar__meta">
+        <div class="scope-switch" role="tablist" aria-label="Tipo de atributos">
+          <button
+            class={`scope-switch__item ${activeScope === 'strong' ? 'scope-switch__item--active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeScope === "strong"}
+            on:click={() => switchScope("strong")}
           >
-            <div class="entity-primary-content">
-              <p class="banner-title">Entidad seleccionada</p>
-              <div class="entity-status-row">
-                <h3>{current.Name}</h3>
-                {#if isApproved(current)}
-                  <span class="status-pill status-pill--approved">&#10003;</span>
-                {:else}
-                  <span class="status-pill">Pendiente</span>
-                {/if}
-              </div>
-              <p class="entity-description">{current.Description || "Sin definición."}</p>
-            </div>
-            <div class="entity-card-actions">
-              <CreateEntity
-                id={current.Id}
-                onSave={async () => {
-                  await onRefresh();
-                  await loadEntity(current.Id);
-                }}
-              />
-            </div>
-            <div class="entity-card-actions">
-              <button
-                class={`control control--success ${isApproved(current) ? 'control--active' : ''}`}
-                on:click={toggleCurrentApproval}
-                disabled={approvalUpdating}
-              >
-                {isApproved(current) ? "Quitar aprobación" : "Aprobar entidad"}
+            Fuertes
+          </button>
+          <button
+            class={`scope-switch__item ${activeScope === 'intersection' ? 'scope-switch__item--active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeScope === "intersection"}
+            on:click={() => switchScope("intersection")}
+          >
+            Intersección
+          </button>
+        </div>
+        <span class="studio-chip">{activeScope === "strong" ? entities.length : intersectionEntities.length} entidades</span>
+        <span class="studio-chip studio-chip--quiet">{activeScope === "strong" ? (current?.Attributes?.length ?? 0) : (currentIntersection?.Entity.Attributes?.length ?? 0)} atributos</span>
+        {#if activeScope === "strong"}
+          <span class="studio-chip studio-chip--quiet">{relationSummaryCount} cruces</span>
+        {/if}
+      </div>
+      <div class="toolbar-actions attributes-toolbar__actions">
+        <div class="view-jumps">
+          <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={activeScope !== "strong" || !selectedId}>
+            <ButtonIcon name="database"/>
+            <span>Ir a definicion</span>
+          </button>
+          <button class="control control--accent" on:click={() => jumpToTab("relations")} disabled={activeScope !== "strong" || !selectedId}>
+            <ButtonIcon name="relations"/>
+            <span>Ir a combinatorio</span>
+          </button>
+        </div>
+        <AttributeForm
+          entityId={activeScope === "strong" ? (selectedId ?? (entities[0]?.Id ?? null)) : null}
+          relationId={activeScope === "intersection" ? (selectedIntersectionRelationId ?? (intersectionEntities[0]?.RelationID ?? null)) : null}
+          entity={activeScope === "strong" ? current : currentIntersection?.Entity ?? null}
+          allowPrimaryKey={activeScope === "strong"}
+          triggerClass="attributes-toolbar-trigger"
+          onSaved={async () => {
+            await onRefresh();
+            if (activeScope === "strong" && selectedId !== null) {
+              await loadEntity(selectedId);
+            }
+          }}
+        />
+        <div class="entity-switcher">
+          <div class="entity-picker">
+            <select
+              class="entity-select"
+              on:change={handleSelectChange}
+              disabled={activeScope === "strong" ? !entities.length : !intersectionEntities.length}
+            >
+              {#if activeScope === "strong"}
+                {#each entities as entity}
+                  <option value={entity.Id} selected={entity.Id === selectedId}>{entity.Name}</option>
+                {/each}
+              {:else}
+                {#each intersectionEntities as item}
+                  <option value={item.RelationID} selected={item.RelationID === selectedIntersectionRelationId}>{item.Entity.Name}</option>
+                {/each}
+              {/if}
+            </select>
+            <div class="entity-nav">
+              <button class="control control--icon control--soft" on:click={prevEntity} aria-label="Entidad anterior" disabled={activeScope === "strong" ? entities.length <= 1 : intersectionEntities.length <= 1}>
+                <ButtonIcon name="chevron-left"/>
+              </button>
+              <button class="control control--icon control--soft" on:click={nextEntity} aria-label="Entidad siguiente" disabled={activeScope === "strong" ? entities.length <= 1 : intersectionEntities.length <= 1}>
+                <ButtonIcon name="chevron-right"/>
               </button>
             </div>
           </div>
-
-          {#if relationSummary.length}
-            <div class:info-banner={true} class:info-banner--approved={isApproved(current)}>
-              <div class="relation-banner-head">
-                <div>
-                  <p class="banner-title">Relaciones de esta entidad</p>
-                  <p class="relation-banner-copy">Resumen textual de los cruces registrados para esta entidad.</p>
-                </div>
-              </div>
-              <div class="relation-groups">
-                {#each relationSummary as group}
-                  <section class="relation-group">
-                    <div class="relation-group-head">
-                      <span class="relation-group-type">{group.type}</span>
-                      <span class="relation-group-label">{group.label}</span>
-                    </div>
-                    <div class="pill-row">
-                      {#each group.items as item}
-                        <span class="pill">{item}</span>
-                      {/each}
-                    </div>
-                  </section>
-                {/each}
-              </div>
+        </div>
+      </div>
+    </div>
+    {#if activeScope === "strong" && relationSummary.length}
+      <div class="attributes-toolbar__relations">
+        <div class="relation-bar">
+          <div class="relation-bar__picker">
+            <span class="banner-title">Relaciones</span>
+            <select
+              id="attribute-relation-type"
+              class="entity-select relation-type-select"
+              value={activeRelationGroup?.type ?? ""}
+              on:change={handleRelationTypeChange}
+            >
+              {#each relationSummary as group}
+                <option value={group.type}>{group.type}</option>
+              {/each}
+            </select>
+          </div>
+          {#if activeRelationGroup}
+            <div class="relation-bar__tags" aria-label="Relaciones de la entidad activa">
+              {#each activeRelationGroup.items as item}
+                <span class="pill relation-pill" title={`${activeRelationGroup.type} ${item}`}>{item}</span>
+              {/each}
             </div>
+          {:else}
+            <div class="relation-bar__empty">Sin relaciones visibles.</div>
           {/if}
+        </div>
+        {#if relationSummary.length > 1}
+          <div class="relation-type-summary">
+            {#each relationSummary as group}
+              <span class="relation-type-summary__item">{group.type}</span>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </div>
+
+  {#if activeScope === "strong" && !entities.length}
+    <div class="empty-panel">Crea entidades para gestionar atributos.</div>
+  {:else if activeScope === "intersection" && !intersectionEntities.length}
+    <div class="empty-panel">No hay entidades de intersección todavía. Se crearán cuando exista una relación N:N.</div>
+  {:else if activeScope === "strong" && loading}
+    <div class="empty-panel">Cargando atributos...</div>
+  {:else if activeScope === "strong" && current}
+    <section class="attributes-stage">
+      <div class="attributes-layout">
+        <aside class="attributes-deck">
+          <div class="attributes-focus-card">
+            <EntityFocusCard
+              kicker="Entidad seleccionada"
+              name={current.Name}
+              description={current.Description || "Sin definición."}
+              approved={isApproved(current)}
+              transitionName={`attribute-entity-${current.Id}`}
+            >
+              <div slot="actions" class="entity-focus-actions">
+                <CreateEntity
+                  id={current.Id}
+                  triggerLabel="Editar"
+                  onSave={async () => {
+                    await onRefresh();
+                    await loadEntity(current.Id);
+                  }}
+                />
+                <button
+                  class={`control control--success ${isApproved(current) ? 'control--active' : ''}`}
+                  on:click={toggleCurrentApproval}
+                  disabled={approvalUpdating}
+                >
+                  <ButtonIcon name={isApproved(current) ? "check-off" : "check"}/>
+                  <span>{isApproved(current) ? "Quitar" : "Aprobar"}</span>
+                </button>
+              </div>
+            </EntityFocusCard>
+          </div>
         </aside>
 
         <section class="attributes-panel" style={`view-transition-name: attribute-table-${current.Id};`}>
@@ -457,7 +729,6 @@
               <p class="label">Inventario de atributos</p>
               <p class="muted">Arrastra filas para cambiar el orden natural de la definición.</p>
             </div>
-            <span class="attributes-panel__hint">Reordenamiento directo</span>
           </div>
           <div
             class="table-wrapper frosted"
@@ -472,35 +743,72 @@
                 <th>Nombre</th>
                 <th>Descripción</th>
                 <th style="width: 120px;">Tipo</th>
+                <th style="width: 72px;">Clave</th>
                 <th style="width: 180px;">Acciones</th>
               </tr>
               </thead>
               <tbody class="draggable-body">
-              {#if !current.Attributes || current.Attributes.length === 0}
+              {#if !current.Attributes?.some(a => a.KeyType === "pk")}
+                {#each getInheritedPKs(current, project) as inherited}
+                  <tr class="inherited-pk-row" draggable="false">
+                    <td class="inherited-name">
+                      <span class="inherited-tag">FK heredada</span>
+                      {inherited.attributeName || `PK de ${inherited.entityName} pendiente por definir`}
+                    </td>
+                    <td>
+                      {#if inherited.attributeName}
+                        <span class="muted italic">{inherited.description || "Sin descripción."}</span>
+                      {:else}
+                        <span class="muted italic">Atributo heredado por relación con {inherited.entityName}</span>
+                      {/if}
+                    </td>
+                    <td class="muted">{inherited.type || "—"}</td>
+                    <td><span class="badge badge--fk">FK (H)</span></td>
+                    <td class="muted">Lectura</td>
+                  </tr>
+                {/each}
+              {/if}
+
+              {#if (!current.Attributes || current.Attributes.length === 0) && getInheritedPKs(current, project).length === 0}
                 <tr class="empty-row" draggable="false">
-                  <td colspan="4">No hay atributos definidos aún.</td>
+                  <td colspan="5">No hay atributos definidos aún.</td>
                 </tr>
               {:else}
-                {#each current.Attributes as attribute, index (attribute.Id)}
+                {#each (current.Attributes || []) as attribute, index (attribute.Id)}
                   <tr
                     class:dragging={draggingIndex === index}
                     class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
-                    draggable="true"
+                    class:pk-row={attribute.KeyType === "pk"}
+                    draggable={attribute.KeyType !== "pk"}
                     style={`view-transition-name: attribute-row-${attribute.Id};`}
-                    on:dragstart={(event) => startDrag(index, event)}
-                    on:dragover={(event) => handleDragOver(index, event)}
-                    on:dragenter={(event) => handleDragOver(index, event)}
-                    on:drop={(event) => handleDrop(index, event)}
+                    on:dragstart={(event) => attribute.KeyType !== "pk" && startDrag(index, event)}
+                    on:dragover={(event) => attribute.KeyType !== "pk" && handleDragOver(index, event)}
+                    on:dragenter={(event) => attribute.KeyType !== "pk" && handleDragOver(index, event)}
+                    on:drop={(event) => attribute.KeyType !== "pk" && handleDrop(index, event)}
                     on:dragend={clearDrag}
                   >
-                    <td>{attribute.Name}</td>
+                    <td class:inherited-name={attribute.KeyType === "pk"}>
+                      {#if attribute.KeyType === "pk"}
+                        <span class="pk-tag">PK</span>
+                      {/if}
+                      {attribute.Name}
+                    </td>
                     <td>{attribute.Description}</td>
                     <td>{attribute.Type || "Por definir"}</td>
+                    <td>
+                      {#if attribute.KeyType === "pk"}
+                        <span class="badge badge--pk">PK</span>
+                      {:else}
+                        {attributeKeyLabel(attribute)}
+                      {/if}
+                    </td>
                     <td>
                       <div class="row-actions">
                         <AttributeForm
                           entityId={current.Id}
+                          entity={current}
                           attribute={attribute}
+                          allowPrimaryKey={true}
                           onSaved={async () => {
                             await onRefresh();
                             await loadEntity(current.Id);
@@ -512,6 +820,142 @@
                           onSaved={async () => {
                             await onRefresh();
                             await loadEntity(current.Id);
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+
+                  {#if attribute.KeyType === "pk"}
+                    {#each getInheritedPKs(current, project) as inherited}
+                      <tr class="inherited-pk-row" draggable="false">
+                        <td class="inherited-name">
+                          <span class="inherited-tag">FK heredada</span>
+                          {inherited.attributeName || `PK de ${inherited.entityName} pendiente por definir`}
+                        </td>
+                        <td>
+                          {#if inherited.attributeName}
+                            <span class="muted italic">{inherited.description || "Sin descripción."}</span>
+                          {:else}
+                            <span class="muted italic">Atributo heredado por relación con {inherited.entityName}</span>
+                          {/if}
+                        </td>
+                        <td class="muted">{inherited.type || "—"}</td>
+                        <td><span class="badge badge--fk">FK (H)</span></td>
+                        <td class="muted">Lectura</td>
+                      </tr>
+                    {/each}
+                  {/if}
+                {/each}
+              {/if}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+  {:else if activeScope === "intersection" && currentIntersection}
+    <section class="attributes-stage">
+      <div class="attributes-layout">
+        <aside class="attributes-deck">
+          <div class="attributes-focus-card">
+            <EntityFocusCard
+              kicker="Entidad de intersección"
+              name={currentIntersection.Entity.Name}
+              description={currentIntersection.Entity.Description || "Sin definición."}
+              approved={false}
+              transitionName={`attribute-entity-intersection-${currentIntersection.RelationID}`}
+            >
+              <div slot="actions" class="entity-focus-actions">
+                <span class="intersection-origin">{intersectionOriginLabel(currentIntersection)}</span>
+              </div>
+            </EntityFocusCard>
+          </div>
+        </aside>
+
+        <section class="attributes-panel" style={`view-transition-name: attribute-table-intersection-${currentIntersection.RelationID};`}>
+          <div class="attributes-panel__head">
+            <div>
+              <p class="label">Inventario de atributos</p>
+              <p class="muted">Las intersecciones permiten agregar atributos, pero no marcar PK por ahora.</p>
+            </div>
+          </div>
+          <div
+            class="table-wrapper frosted"
+            bind:this={tableWrapper}
+            on:dragover={handleTableDragOver}
+            on:dragleave={handleTableDragLeave}
+            on:drop={stopAutoScroll}
+          >
+            <table class="entities-table">
+              <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Descripción</th>
+                <th style="width: 120px;">Tipo</th>
+                <th style="width: 72px;">Clave</th>
+                <th style="width: 180px;">Acciones</th>
+              </tr>
+              </thead>
+              <tbody class="draggable-body">
+              {#each getIntersectionInheritedPKs(currentIntersection, project) as inherited}
+                <tr class="inherited-pk-row intersection-pk" draggable="false">
+                  <td class="inherited-name">
+                    <span class="inherited-tag">PK heredada</span>
+                    {inherited.attributeName || `PK de ${inherited.entityName} pendiente por definir`}
+                  </td>
+                  <td>
+                    {#if inherited.attributeName}
+                      <span class="muted italic">{inherited.description || "Sin descripción."}</span>
+                    {:else}
+                      <span class="muted italic">Atributo heredado por relación con {inherited.entityName}</span>
+                    {/if}
+                  </td>
+                  <td class="muted">{inherited.type || "—"}</td>
+                  <td><span class="badge badge--pk">PK (H)</span></td>
+                  <td class="muted">Lectura</td>
+                </tr>
+              {/each}
+
+              {#if !currentIntersection.Entity.Attributes || currentIntersection.Entity.Attributes.length === 0}
+                {#if getIntersectionInheritedPKs(currentIntersection, project).length === 0}
+                  <tr class="empty-row" draggable="false">
+                    <td colspan="5">No hay atributos definidos aún.</td>
+                  </tr>
+                {/if}
+              {:else}
+                {#each currentIntersection.Entity.Attributes as attribute, index (attribute.Id)}
+                  <tr
+                    class:dragging={draggingIndex === index}
+                    class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
+                    draggable="true"
+                    style={`view-transition-name: intersection-attribute-row-${attribute.Id};`}
+                    on:dragstart={(event) => startDrag(index, event)}
+                    on:dragover={(event) => handleDragOver(index, event)}
+                    on:dragenter={(event) => handleDragOver(index, event)}
+                    on:drop={(event) => handleDrop(index, event)}
+                    on:dragend={clearDrag}
+                  >
+                    <td>{attribute.Name}</td>
+                    <td>{attribute.Description}</td>
+                    <td>{attribute.Type || "Por definir"}</td>
+                    <td></td>
+                    <td>
+                      <div class="row-actions">
+                        <AttributeForm
+                          relationId={currentIntersection.RelationID}
+                          entity={currentIntersection.Entity}
+                          attribute={attribute}
+                          allowPrimaryKey={false}
+                          onSaved={async () => {
+                            await onRefresh();
+                          }}
+                        />
+                        <DeleteAttribute
+                          relationId={currentIntersection.RelationID}
+                          attributeId={attribute.Id}
+                          onSaved={async () => {
+                            await onRefresh();
                           }}
                         />
                       </div>
@@ -570,135 +1014,117 @@
     width: 100%;
   }
 
-  .info-banner {
-    margin-bottom: 12px;
-    padding: 12px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(20, 32, 46, 0.55), rgba(27, 44, 63, 0.85));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .info-banner--approved {
-    background: linear-gradient(135deg, rgba(18, 53, 27, 0.7), rgba(23, 67, 36, 0.88));
-    border-color: rgba(113, 201, 118, 0.3);
-  }
-
-  .entity-status-card {
-    margin-bottom: 12px;
-    padding: 14px 16px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(20, 32, 46, 0.7), rgba(24, 38, 54, 0.95));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    display: flex;
-    justify-content: space-between;
+  .scope-switch {
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 999px;
+    border: 1px solid var(--line-soft);
+    background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
   }
 
-  .entity-primary-content {
-    flex: 1;
-    min-width: 0;
+  .scope-switch__item {
+    min-height: 2.2rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    transition: background 140ms ease, color 140ms ease, transform 140ms ease;
   }
 
-  .entity-status-card--approved {
-    background: linear-gradient(135deg, rgba(18, 53, 27, 0.78), rgba(23, 67, 36, 0.92));
-    border-color: rgba(113, 201, 118, 0.3);
+  .scope-switch__item:hover {
+    transform: translateY(-1px);
+  }
+
+  .scope-switch__item--active {
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    color: var(--accent-strong);
   }
 
   .banner-title {
-    margin: 0 0 8px;
-    font-size: 13px;
-    letter-spacing: 0.4px;
-    color: #9ab5e4;
+    margin: 0;
+    font-size: 0.74rem;
+    letter-spacing: 0.16em;
+    color: var(--accent);
+    text-transform: uppercase;
+    font-weight: 800;
+  }
+
+  .relation-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.38rem 0.78rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    color: var(--accent-strong);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
-  .entity-status-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .entity-status-row h3 {
-    margin: 0;
-    font-size: 20px;
-  }
-
-  .entity-description {
-    margin: 10px 0 0;
-    color: #d9e4f5;
-    opacity: 0.82;
-    line-height: 1.5;
-  }
-
-  .entity-card-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .pill-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .relation-groups {
+  .attributes-toolbar__relations {
     display: grid;
-    gap: 10px;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.65rem;
+    padding: 0.95rem 1.1rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-md) - 4px);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, var(--surface)), color-mix(in srgb, var(--surface) 98%, var(--surface-strong))),
+      linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, var(--surface-strong)), transparent 38%);
+    box-shadow: var(--shadow-sm);
   }
 
-  .relation-banner-head {
+  .relation-bar {
     display: flex;
     align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
+    gap: 0.85rem;
+    padding: 0.72rem 0.82rem;
+    border-radius: 1rem;
+    border: 1px solid var(--line-soft);
+    background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
   }
 
-  .relation-banner-copy {
-    margin: 4px 0 0;
-    color: var(--ink-faint);
-    max-width: 58ch;
-    line-height: 1.45;
-  }
-
-  .relation-group {
-    padding: 10px;
-    border-radius: 12px;
-    background: rgba(10, 18, 30, 0.28);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+  .relation-bar__picker {
     display: grid;
-    gap: 10px;
+    gap: 0.38rem;
+    min-width: 0;
+    flex: 0 0 auto;
+    align-self: flex-start;
   }
 
-  .relation-group-head {
+  .relation-bar__tags {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
     flex-wrap: wrap;
+    gap: 0.75rem;
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
-  .relation-group-type {
+  .relation-type-select {
+    min-width: 5.5rem;
+    width: 5.5rem;
+    padding-right: 2.4rem;
+  }
+
+  .relation-type-select:focus {
+    outline: none;
+  }
+
+  .relation-bar__empty {
     display: inline-flex;
     align-items: center;
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: rgba(90, 209, 255, 0.14);
-    color: #dff5ff;
-    border: 1px solid rgba(90, 209, 255, 0.2);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-  }
-
-  .relation-group-label {
-    color: #b9cbe6;
-    font-size: 12px;
+    min-height: 2.5rem;
+    color: var(--ink-faint);
+    font-size: 0.82rem;
   }
 
   .pill {
@@ -717,31 +1143,94 @@
     text-overflow: ellipsis;
   }
 
+  .relation-pill {
+    max-width: none;
+    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+  }
 
-  .status-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #d9e4f5;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    font-size: 12px;
+  .relation-type-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+  }
+
+  .relation-type-summary__item {
+    color: var(--ink-faint);
+    font-size: 0.75rem;
     font-weight: 700;
   }
-
-  .status-pill--approved {
-    color: #dff7df;
-    background: rgba(76, 175, 80, 0.2);
-    border-color: rgba(113, 201, 118, 0.35);
-    min-width: 30px;
-    justify-content: center;
-  }
-
   .entities-table {
     width: 100%;
     border-collapse: collapse;
     color: #e8edf7;
+  }
+
+  .inherited-pk-row {
+    background-color: rgba(59, 130, 246, 0.05);
+    border-left: 3px solid rgba(59, 130, 246, 0.5);
+  }
+
+  .pk-row {
+    background-color: rgba(16, 185, 129, 0.05);
+    border-left: 3px solid rgba(16, 185, 129, 0.5);
+  }
+
+  .inherited-pk-row.intersection-pk {
+    background-color: rgba(139, 92, 246, 0.05);
+    border-left-color: rgba(139, 92, 246, 0.5);
+  }
+
+  .inherited-name {
+    font-weight: 500;
+  }
+
+  .inherited-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 700;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  .intersection-pk .inherited-tag {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+  }
+
+  .pk-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 700;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  :global(.badge--fk) {
+    background: #eab308;
+    color: #422006;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  :global(.badge--pk) {
+    background: #10b981;
+    color: #064e3b;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
   }
 
   .entities-table th,
@@ -806,6 +1295,22 @@
     align-items: center;
   }
 
+  .entity-switcher {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+  }
+
+  .entity-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+
   .entity-select {
     border-radius: 10px;
     background: rgba(21, 32, 46, 0.82);
@@ -837,15 +1342,41 @@
     align-items: center;
   }
 
+  .intersection-origin {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    padding: 0.38rem 0.72rem;
+    border-radius: 999px;
+    border: 1px solid var(--line-soft);
+    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
   @media (max-width: 720px) {
-    .entity-status-card {
-      flex-direction: column;
-      align-items: stretch;
+    .entity-switcher {
+      margin-left: 0;
+      justify-content: flex-start;
     }
 
-    .relation-banner-head {
-      align-items: stretch;
+    .entity-picker {
+      width: 100%;
+    }
+
+    .relation-type-select {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .relation-bar {
       flex-direction: column;
+    }
+
+    .relation-bar__picker {
+      min-width: 0;
+      flex-basis: auto;
     }
   }
 
@@ -854,7 +1385,11 @@
     padding: 1.05rem 1.1rem;
     border: 1px solid var(--border);
     border-radius: calc(var(--radius-md) - 4px);
-    background: var(--panel-surface);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 98%, var(--surface)), color-mix(in srgb, var(--surface) 100%, var(--surface-strong))),
+      linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, var(--surface-strong)), transparent 38%);
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(18px);
   }
 
   .label,
@@ -885,45 +1420,14 @@
     box-shadow: var(--focus-ring);
   }
 
-  .info-banner,
-  .entity-status-card {
-    border-color: var(--border);
-    background: var(--panel-surface-strong);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .info-banner--approved,
-  .entity-status-card--approved {
-    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
-    background: var(--panel-surface-success);
-  }
-
-  .entity-status-row h3,
   .entities-table {
     color: var(--ink);
   }
 
-  .relation-group {
-    background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
-    border-color: var(--line-faint);
-  }
-
-  .relation-group-type,
-  .relation-group-label {
-    color: var(--ink-soft);
-  }
-
-  .pill,
-  .status-pill {
+  .pill {
     background: var(--chip-surface);
     border-color: var(--line-soft);
     color: var(--ink-soft);
-  }
-
-  .status-pill--approved {
-    background: var(--chip-success-surface);
-    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
-    color: var(--success);
   }
 
   .table-wrapper.frosted {
@@ -956,8 +1460,24 @@
   }
 
   .attributes-studio {
+    --attributes-sticky-total-height: 0px;
     display: grid;
     gap: 1rem;
+  }
+
+  .attributes-sticky-stack {
+    margin-bottom: 18px;
+  }
+
+  .attributes-sticky-stack--pinned {
+    position: sticky;
+    top: 0;
+    z-index: calc(var(--layer-ribbon) - 2);
+  }
+
+  .attributes-sticky-sentinel {
+    height: 1px;
+    margin-top: -1px;
   }
 
   .attributes-layout {
@@ -971,7 +1491,8 @@
     display: grid;
     gap: 1rem;
     position: sticky;
-    top: 0.9rem;
+    top: calc(var(--attributes-sticky-total-height) + 1rem);
+    align-self: start;
   }
 
   .attributes-toolbar,
@@ -998,6 +1519,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
     gap: 0.9rem 1rem;
+    margin-bottom: 0;
   }
 
   .attributes-toolbar__copy {
@@ -1014,6 +1536,14 @@
 
   .attributes-toolbar__actions {
     grid-column: 1 / -1;
+  }
+
+  :global(.attributes-toolbar-trigger) {
+    min-height: 2.85rem;
+    padding: 0.72rem 1rem;
+    border-radius: 1rem;
+    font-size: 0.92rem;
+    box-shadow: 0 12px 22px color-mix(in srgb, var(--ink) 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
   }
 
   .studio-chip {
@@ -1062,28 +1592,12 @@
     margin-bottom: 0.9rem;
   }
 
-  .attributes-panel__hint {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.5rem 0.8rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
-    border: 1px solid var(--line-soft);
-    color: var(--ink-soft);
-    font-size: 0.78rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
   @media (max-width: 720px) {
     .attributes-layout {
       grid-template-columns: 1fr;
     }
 
-    .attributes-deck {
+    .attributes-focus-card {
       position: static;
     }
 
@@ -1097,11 +1611,14 @@
       justify-content: flex-start;
     }
 
+    .entity-select {
+      min-width: 0;
+      flex: 1 1 14rem;
+    }
+
     .attributes-panel {
       padding: 0.9rem;
     }
-
-    .attributes-panel__hint,
     .studio-chip {
       white-space: normal;
     }

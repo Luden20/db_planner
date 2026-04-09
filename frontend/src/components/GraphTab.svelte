@@ -2,6 +2,7 @@
   import {onMount} from "svelte";
   import type {utils} from "../../wailsjs/go/models";
   import {GetCombinatory} from "../../wailsjs/go/main/App";
+  import ButtonIcon from "./ButtonIcon.svelte";
   import {showToast} from "../lib/toast";
 
   type GraphNode = {
@@ -764,10 +765,12 @@
       </label>
 
       <button class="control control--soft" type="button" on:click={() => relayoutGraph(true)}>
-        Reordenar
+        <ButtonIcon name="layout"/>
+        <span>Reordenar</span>
       </button>
       <button class="control control--ghost" type="button" on:click={() => fitBoard(true)}>
-        Reencuadrar
+        <ButtonIcon name="frame"/>
+        <span>Reencuadrar</span>
       </button>
     </div>
   </div>
@@ -866,13 +869,16 @@
             </div>
             <div class="focus-actions">
               <button class="control control--ghost control--sm control--block" type="button" on:click={() => onJumpTo("entities", selectedNode.id)}>
-                Definicion
+                <ButtonIcon name="database"/>
+                <span>Definicion</span>
               </button>
               <button class="control control--accent control--sm control--block" type="button" on:click={() => onJumpTo("relations", selectedNode.id)}>
-                Relaciones
+                <ButtonIcon name="relations"/>
+                <span>Relaciones</span>
               </button>
               <button class="control control--soft control--sm control--block" type="button" on:click={() => onJumpTo("tertiary", selectedNode.id)}>
-                Atributos
+                <ButtonIcon name="attributes"/>
+                <span>Atributos</span>
               </button>
             </div>
           {:else}
@@ -950,7 +956,8 @@
             <div class="result-list">
               {#each searchResults.slice(0, 8) as result}
                 <button class="control control--sm control--block control--ghost" type="button" on:click={() => focusNode(result.id, true)}>
-                  {result.name}
+                  <ButtonIcon name="search"/>
+                  <span>{result.name}</span>
                 </button>
               {/each}
               {#if searchResults.length === 0}

@@ -2,7 +2,7 @@
   import { flip } from "svelte/animate";
   import { quintOut } from "svelte/easing";
   import { fade, fly } from "svelte/transition";
-  import { tick } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     AddRole,
     AddRoleProcessPermission,
@@ -15,6 +15,7 @@
     Save
   } from "../../wailsjs/go/main/App";
   import type { utils } from "../../wailsjs/go/models";
+  import ButtonIcon from "./ButtonIcon.svelte";
   import ModalLauncher from "./ModalLauncher.svelte";
   import { showToast } from "../lib/toast";
 
@@ -36,13 +37,17 @@
   export let onRefresh: () => Promise<void> = async () => {};
 
   const permissionColumns: Array<{key: PermissionKey; label: string; short: string; hint: string}> = [
-    {key: "ViewPermission", label: "Ver", short: "V", hint: "Consultar registros"},
-    {key: "InsertPermission", label: "Insertar", short: "I", hint: "Crear registros"},
-    {key: "UpdatePermission", label: "Actualizar", short: "A", hint: "Modificar registros"},
-    {key: "DeletePermission", label: "Eliminar", short: "E", hint: "Borrar registros"}
+    {key: "InsertPermission", label: "Create", short: "C", hint: "Crear registros"},
+    {key: "ViewPermission", label: "Read", short: "R", hint: "Consultar registros"},
+    {key: "UpdatePermission", label: "Update", short: "U", hint: "Modificar registros"},
+    {key: "DeletePermission", label: "Delete", short: "D", hint: "Eliminar registros"}
   ];
 
   let selectedRoleId: number | null = null;
+  let stickySentinel: HTMLDivElement | null = null;
+  let stickyStack: HTMLDivElement | null = null;
+  let stickyStackHeight = 0;
+  let stickyStackPinned = false;
   let busySection: string | null = null;
   let newRoleName = "";
   let newRoleDescription = "";
@@ -78,6 +83,19 @@
       return String(record.error ?? record.message ?? "Error desconocido");
     }
     return "Error desconocido";
+  };
+
+  const syncStickyState = () => {
+    if (!stickySentinel) {
+      stickyStackPinned = false;
+      return;
+    }
+
+    stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
+  };
+
+  const syncStickyStackHeight = () => {
+    stickyStackHeight = stickyStack?.offsetHeight ?? 0;
   };
 
   const entityDescription = (entityId: number) =>
@@ -145,19 +163,6 @@
       + Number(permission.DeletePermission), 0);
 
   const countGrantedProcesses = (role: utils.Role | null) => role?.ProcessPermissions?.length ?? 0;
-
-  const tablePermissionSummary = (role: utils.Role | null, tableId: number) => {
-    const permission = getTablePermission(role, tableId);
-    if (!permission) {
-      return "Sin acceso";
-    }
-
-    const activeLabels = permissionColumns
-      .filter((column) => permission[column.key])
-      .map((column) => column.short);
-
-    return activeLabels.length ? activeLabels.join(" / ") : "Sin acceso";
-  };
 
   const prepareRoleCreate = () => {
     newRoleName = "";
@@ -402,19 +407,187 @@
       description: process.Description ?? ""
     }))
   );
+
+  onMount(() => {
+    syncStickyStackHeight();
+    syncStickyState();
+
+    if (typeof ResizeObserver === "undefined" || !stickyStack) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      syncStickyStackHeight();
+    });
+    observer.observe(stickyStack);
+
+    return () => {
+      observer.disconnect();
+    };
+  });
+
+  $: if (stickySentinel) {
+    syncStickyState();
+  }
+  $: if (stickyStack) {
+    syncStickyStackHeight();
+  }
 </script>
 
-<section class="roles-tab">
-  <div class="roles-toolbar">
-    <div>
-      <p class="label">Roles</p>
-      <p class="muted">Diseña accesos por rol sin salir del proyecto: tablas en matriz, procesos en modal y lectura clara para sesiones largas.</p>
-    </div>
-    <div class="roles-toolbar__meta">
-      <span class="roles-chip">{roles.length} roles</span>
-      <span class="roles-chip roles-chip--quiet">{entities.length} tablas</span>
-      <span class="roles-chip roles-chip--quiet">{processCatalog.length} procesos</span>
-    </div>
+<svelte:window on:scroll={syncStickyState} on:resize={syncStickyState}/>
+
+<section class="roles-tab" style={`--roles-sticky-total-height: ${stickyStackHeight}px;`}>
+  <div class="roles-sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
+  <div
+    class:roles-sticky-stack={true}
+    class:roles-sticky-stack--pinned={stickyStackPinned}
+    bind:this={stickyStack}
+  >
+
+    {#if currentRole}
+      <header class="role-hero" style={`view-transition-name: role-hero-${currentRole.Id};`}>
+        <div class="role-hero__copy">
+          <div class="role-hero__title-row">
+            <h2>{currentRole.Name}</h2>
+            <div class="role-pager">
+              <button class="control control--icon control--soft" on:click={prevRole} aria-label="Rol anterior" disabled={roles.length <= 1 || busySection !== null}>
+                <ButtonIcon name="chevron-left"/>
+              </button>
+              <span>{roles.findIndex((role) => role.Id === currentRole.Id) + 1} / {roles.length}</span>
+              <button class="control control--icon control--soft" on:click={nextRole} aria-label="Rol siguiente" disabled={roles.length <= 1 || busySection !== null}>
+                <ButtonIcon name="chevron-right"/>
+              </button>
+            </div>
+          </div>
+          <p>{currentRole.Description || "Usa este perfil para decidir qué tablas toca y qué procesos puede activar."}</p>
+        </div>
+
+        <div class="role-hero__side">
+          <div class="role-stats">
+            <div class="role-stat">
+              <span>Tablas con acceso</span>
+              <strong>{countGrantedTables(currentRole)}</strong>
+            </div>
+            <div class="role-stat">
+              <span>Checks activos</span>
+              <strong>{countGrantedChecks(currentRole)}</strong>
+            </div>
+            <div class="role-stat">
+              <span>Procesos habilitados</span>
+              <strong>{countGrantedProcesses(currentRole)}</strong>
+            </div>
+          </div>
+
+          <div class="role-actions">
+            <ModalLauncher
+              triggerLabel="Editar rol"
+              title="Editar rol"
+              confirmLabel="Guardar"
+              triggerVariant="edit"
+              confirmVariant="primary"
+              size="form"
+              triggerClass="roles-modal-trigger roles-modal-trigger--hero"
+              triggerDisabled={busySection !== null}
+              onOpen={() => prepareRoleEdit(currentRole)}
+              onSuccess={() => handleSaveRole(currentRole.Id)}
+            >
+              <div class="modal-intro">
+                <p class="modal-kicker local-modal-kicker">Editor de rol</p>
+                <p class="modal-hint local-modal-hint">Ajusta el nombre operativo y la descripcion del perfil.</p>
+              </div>
+              <label class="field">
+                <span>Nombre</span>
+                <input type="text" bind:value={roleDraftName} placeholder="Nombre del rol" />
+              </label>
+              <label class="field">
+                <span>Descripcion</span>
+                <textarea rows="3" bind:value={roleDraftDescription} placeholder="Describe para quién sirve este rol." />
+              </label>
+            </ModalLauncher>
+
+            <ModalLauncher
+              triggerLabel="Procesos"
+              title="Permisos de procesos"
+              confirmLabel="Guardar permisos"
+              triggerVariant="primary"
+              confirmVariant="primary"
+              size="form"
+              triggerClass="roles-modal-trigger roles-modal-trigger--hero"
+              triggerDisabled={busySection !== null || !processCatalog.length}
+              onOpen={() => prepareProcessPermissions(currentRole)}
+              onSuccess={handleSaveProcessPermissions}
+            >
+              <div class="modal-intro">
+                <p class="modal-kicker local-modal-kicker">Acceso por proceso</p>
+                <p class="modal-hint local-modal-hint">Marca qué procesos puede ejecutar este rol. Aqui solo existe acceso o no acceso.</p>
+              </div>
+
+              {#if processGroups.length}
+                <div class="process-modal-groups">
+                  {#each processGroups as group (group.id)}
+                    <section class="process-modal-group">
+                      <div class="process-modal-group__head">
+                        <div>
+                          <strong>{group.name}</strong>
+                          <p>{group.description || "Macroproceso sin descripcion."}</p>
+                        </div>
+                        <div class="process-modal-group__actions">
+                          <button type="button" class="control control--soft control--sm" on:click={() => setProcessGroupDraft(group, true)}>
+                            <ButtonIcon name="check"/>
+                            <span>Todo</span>
+                          </button>
+                          <button type="button" class="control control--ghost control--sm" on:click={() => setProcessGroupDraft(group, false)}>
+                            <ButtonIcon name="clear"/>
+                            <span>Ninguno</span>
+                          </button>
+                        </div>
+                      </div>
+                      <div class="process-modal-list">
+                        {#each group.processes as process (process.Id)}
+                          <label class="process-permission-row">
+                            <span class="process-permission-row__copy">
+                              <strong>{process.Name}</strong>
+                              <span>{process.Description || "Sin descripcion todavia."}</span>
+                            </span>
+                            <span class="process-permission-row__toggle">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(processPermissionDraft[process.Id])}
+                                on:change={(event) => handleProcessDraftChange(process.Id, event)}
+                              />
+                              <span>Permitido</span>
+                            </span>
+                          </label>
+                        {/each}
+                      </div>
+                    </section>
+                  {/each}
+                </div>
+              {:else}
+                <div class="roles-empty roles-empty--modal">
+                  <strong>Aun no hay procesos</strong>
+                  <p>Crea macroprocesos y procesos para poder asignarlos a roles.</p>
+                </div>
+              {/if}
+            </ModalLauncher>
+
+            <ModalLauncher
+              triggerLabel="Eliminar rol"
+              title="Eliminar rol"
+              confirmLabel="Eliminar"
+              triggerVariant="danger"
+              confirmVariant="danger"
+              size="default"
+              triggerClass="roles-modal-trigger roles-modal-trigger--hero"
+              triggerDisabled={busySection !== null}
+              onSuccess={() => handleRemoveRole(currentRole.Id)}
+            >
+              <p class="modal-hint local-modal-hint">Se eliminara <strong>{currentRole.Name}</strong> con todos sus permisos asociados.</p>
+            </ModalLauncher>
+          </div>
+        </div>
+      </header>
+    {/if}
   </div>
 
   <div class="roles-shell">
@@ -465,6 +638,7 @@
               style={`view-transition-name: role-card-${role.Id};`}
             >
               <span class="role-card__index">{String(index + 1).padStart(2, "0")}</span>
+              <ButtonIcon name="roles"/>
               <strong>{role.Name}</strong>
               <span class="role-card__meta">{countGrantedTables(role)} tablas · {countGrantedProcesses(role)} procesos</span>
               <span class="role-card__hint">{role.Description || "Sin descripcion todavia."}</span>
@@ -481,152 +655,6 @@
 
     <section class="roles-stage">
       {#if currentRole}
-        <header class="role-hero" style={`view-transition-name: role-hero-${currentRole.Id};`}>
-          <div class="role-hero__copy">
-            <p class="section-kicker">Studio de permisos</p>
-            <div class="role-hero__title-row">
-              <h2>{currentRole.Name}</h2>
-              <div class="role-pager">
-                <button class="control control--icon control--soft" on:click={prevRole} aria-label="Rol anterior" disabled={roles.length <= 1 || busySection !== null}>
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M14.78 5.47a.75.75 0 0 1 0 1.06L9.31 12l5.47 5.47a.75.75 0 1 1-1.06 1.06l-6-6a.75.75 0 0 1 0-1.06l6-6a.75.75 0 0 1 1.06 0Z"/>
-                  </svg>
-                </button>
-                <span>{roles.findIndex((role) => role.Id === currentRole.Id) + 1} / {roles.length}</span>
-                <button class="control control--icon control--soft" on:click={nextRole} aria-label="Rol siguiente" disabled={roles.length <= 1 || busySection !== null}>
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M9.22 5.47a.75.75 0 0 1 1.06 0l6 6a.75.75 0 0 1 0 1.06l-6 6a.75.75 0 1 1-1.06-1.06L14.69 12 9.22 6.53a.75.75 0 0 1 0-1.06Z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <p>{currentRole.Description || "Usa este perfil para decidir qué tablas toca y qué procesos puede activar."}</p>
-          </div>
-
-          <div class="role-hero__side">
-            <div class="role-stats">
-              <div class="role-stat">
-                <span>Tablas con acceso</span>
-                <strong>{countGrantedTables(currentRole)}</strong>
-              </div>
-              <div class="role-stat">
-                <span>Checks activos</span>
-                <strong>{countGrantedChecks(currentRole)}</strong>
-              </div>
-              <div class="role-stat">
-                <span>Procesos habilitados</span>
-                <strong>{countGrantedProcesses(currentRole)}</strong>
-              </div>
-            </div>
-
-            <div class="role-actions">
-              <ModalLauncher
-                triggerLabel="Editar rol"
-                title="Editar rol"
-                confirmLabel="Guardar"
-                triggerVariant="accent"
-                confirmVariant="primary"
-                size="form"
-                triggerClass="roles-modal-trigger roles-modal-trigger--hero"
-                triggerDisabled={busySection !== null}
-                onOpen={() => prepareRoleEdit(currentRole)}
-                onSuccess={() => handleSaveRole(currentRole.Id)}
-              >
-                <div class="modal-intro">
-                  <p class="modal-kicker local-modal-kicker">Editor de rol</p>
-                  <p class="modal-hint local-modal-hint">Ajusta el nombre operativo y la descripcion del perfil.</p>
-                </div>
-                <label class="field">
-                  <span>Nombre</span>
-                  <input type="text" bind:value={roleDraftName} placeholder="Nombre del rol" />
-                </label>
-                <label class="field">
-                  <span>Descripcion</span>
-                  <textarea rows="3" bind:value={roleDraftDescription} placeholder="Describe para quién sirve este rol." />
-                </label>
-              </ModalLauncher>
-
-              <ModalLauncher
-                triggerLabel="Procesos"
-                title="Permisos de procesos"
-                confirmLabel="Guardar permisos"
-                triggerVariant="primary"
-                confirmVariant="primary"
-                size="form"
-                triggerClass="roles-modal-trigger roles-modal-trigger--hero"
-                triggerDisabled={busySection !== null || !processCatalog.length}
-                onOpen={() => prepareProcessPermissions(currentRole)}
-                onSuccess={handleSaveProcessPermissions}
-              >
-                <div class="modal-intro">
-                  <p class="modal-kicker local-modal-kicker">Acceso por proceso</p>
-                  <p class="modal-hint local-modal-hint">Marca qué procesos puede ejecutar este rol. Aqui solo existe acceso o no acceso.</p>
-                </div>
-
-                {#if processGroups.length}
-                  <div class="process-modal-groups">
-                    {#each processGroups as group (group.id)}
-                      <section class="process-modal-group">
-                        <div class="process-modal-group__head">
-                          <div>
-                            <strong>{group.name}</strong>
-                            <p>{group.description || "Macroproceso sin descripcion."}</p>
-                          </div>
-                          <div class="process-modal-group__actions">
-                            <button type="button" class="control control--soft control--sm" on:click={() => setProcessGroupDraft(group, true)}>
-                              Todo
-                            </button>
-                            <button type="button" class="control control--ghost control--sm" on:click={() => setProcessGroupDraft(group, false)}>
-                              Ninguno
-                            </button>
-                          </div>
-                        </div>
-                        <div class="process-modal-list">
-                          {#each group.processes as process (process.Id)}
-                            <label class="process-permission-row">
-                              <span class="process-permission-row__copy">
-                                <strong>{process.Name}</strong>
-                                <span>{process.Description || "Sin descripcion todavia."}</span>
-                              </span>
-                              <span class="process-permission-row__toggle">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(processPermissionDraft[process.Id])}
-                                  on:change={(event) => handleProcessDraftChange(process.Id, event)}
-                                />
-                                <span>Permitido</span>
-                              </span>
-                            </label>
-                          {/each}
-                        </div>
-                      </section>
-                    {/each}
-                  </div>
-                {:else}
-                  <div class="roles-empty roles-empty--modal">
-                    <strong>Aun no hay procesos</strong>
-                    <p>Crea macroprocesos y procesos para poder asignarlos a roles.</p>
-                  </div>
-                {/if}
-              </ModalLauncher>
-
-              <ModalLauncher
-                triggerLabel="Eliminar rol"
-                title="Eliminar rol"
-                confirmLabel="Eliminar"
-                triggerVariant="danger"
-                confirmVariant="danger"
-                size="default"
-                triggerClass="roles-modal-trigger roles-modal-trigger--hero"
-                triggerDisabled={busySection !== null}
-                onSuccess={() => handleRemoveRole(currentRole.Id)}
-              >
-                <p class="modal-hint local-modal-hint">Se eliminara <strong>{currentRole.Name}</strong> con todos sus permisos asociados.</p>
-              </ModalLauncher>
-            </div>
-          </div>
-        </header>
-
         <section class="permission-panel">
           <div class="permission-panel__head">
             <div>
@@ -646,7 +674,6 @@
                     {#each permissionColumns as column}
                       <th title={column.hint}>{column.label}</th>
                     {/each}
-                    <th>Resumen</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -679,11 +706,6 @@
                           </label>
                         </td>
                       {/each}
-                      <td>
-                        <span class={`permission-summary-chip ${getTablePermission(currentRole, entity.Id) ? "permission-summary-chip--active" : "permission-summary-chip--idle"}`}>
-                          {tablePermissionSummary(currentRole, entity.Id)}
-                        </span>
-                      </td>
                     </tr>
                   {/each}
                 </tbody>
@@ -708,8 +730,26 @@
 
 <style>
   .roles-tab {
+    --roles-sticky-total-height: 0px;
     display: grid;
     gap: 1rem;
+  }
+
+  .roles-sticky-stack {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 18px;
+  }
+
+  .roles-sticky-stack--pinned {
+    position: sticky;
+    top: 0;
+    z-index: calc(var(--layer-ribbon) - 2);
+  }
+
+  .roles-sticky-sentinel {
+    height: 1px;
+    margin-top: -1px;
   }
 
   .roles-toolbar {
@@ -717,11 +757,32 @@
     justify-content: space-between;
     align-items: end;
     gap: 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-lg) - 8px);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 98%, var(--surface)), color-mix(in srgb, var(--surface) 100%, var(--surface-strong))),
+      linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, var(--surface-strong)), transparent 36%);
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(18px);
+    position: relative;
+    overflow: clip;
   }
 
   .roles-toolbar .label,
   .roles-toolbar .muted {
     margin: 0;
+  }
+
+  .roles-toolbar::before,
+  .role-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: min(220px, 42%);
+    height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 34%, transparent), transparent);
+    pointer-events: none;
   }
 
   .roles-toolbar__meta {
@@ -768,6 +829,9 @@
   }
 
   .roles-rail {
+    position: sticky;
+    top: calc(var(--roles-sticky-total-height) + 1rem);
+    align-self: start;
     display: grid;
     gap: 0.95rem;
     padding: 1rem;
@@ -852,6 +916,11 @@
     letter-spacing: 0.15em;
   }
 
+  .role-card :global(.button-glyph) {
+    color: var(--accent-strong);
+    opacity: 0.86;
+  }
+
   .role-card strong {
     font-size: 1rem;
     line-height: 1.18;
@@ -872,8 +941,9 @@
     border-radius: calc(var(--radius-lg) - 10px);
     border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
     background:
-      linear-gradient(130deg, color-mix(in srgb, var(--surface-strong) 97%, transparent), color-mix(in srgb, var(--surface) 82%, transparent)),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 48%);
+      linear-gradient(130deg, color-mix(in srgb, var(--surface-strong) 99%, var(--surface)), color-mix(in srgb, var(--surface) 96%, var(--surface-strong))),
+      linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, var(--surface-strong)), transparent 48%);
+    backdrop-filter: blur(18px);
   }
 
   .role-hero__title-row {
@@ -988,7 +1058,7 @@
   .permission-matrix {
     width: 100%;
     border-collapse: collapse;
-    min-width: 52rem;
+    min-width: 42rem;
   }
 
   .permission-matrix th,
@@ -1014,6 +1084,8 @@
   .permission-matrix th:first-child,
   .permission-matrix td:first-child {
     text-align: left;
+    width: 15.5rem;
+    min-width: 15.5rem;
   }
 
   .permission-matrix tbody tr:hover {
@@ -1034,6 +1106,11 @@
     color: var(--ink-soft);
     font-size: 0.8rem;
     line-height: 1.45;
+    max-width: 26ch;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .permission-toggle {
@@ -1075,25 +1152,25 @@
     transition: transform 150ms ease, opacity 150ms ease;
   }
 
-  .permission-toggle--v input:checked + .permission-toggle__box {
+  .permission-toggle--r input:checked + .permission-toggle__box {
     border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
     background: color-mix(in srgb, var(--accent) 13%, var(--surface-strong));
     color: var(--accent-strong);
   }
 
-  .permission-toggle--i input:checked + .permission-toggle__box {
+  .permission-toggle--c input:checked + .permission-toggle__box {
     border-color: color-mix(in srgb, var(--success) 26%, var(--border));
     background: color-mix(in srgb, var(--success) 14%, var(--surface-strong));
     color: var(--success);
   }
 
-  .permission-toggle--a input:checked + .permission-toggle__box {
+  .permission-toggle--u input:checked + .permission-toggle__box {
     border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
     background: color-mix(in srgb, var(--accent) 18%, var(--surface-strong));
     color: var(--accent-strong);
   }
 
-  .permission-toggle--e input:checked + .permission-toggle__box {
+  .permission-toggle--d input:checked + .permission-toggle__box {
     border-color: color-mix(in srgb, var(--danger) 26%, var(--border));
     background: color-mix(in srgb, var(--danger) 14%, var(--surface-strong));
     color: var(--danger);
@@ -1116,29 +1193,6 @@
     box-shadow:
       0 0 0 0.2rem color-mix(in srgb, var(--accent) 14%, transparent),
       inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
-  }
-
-  .permission-summary-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 2rem;
-    padding: 0 0.8rem;
-    border-radius: 999px;
-    font-size: 0.78rem;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-
-  .permission-summary-chip--active {
-    border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-  }
-
-  .permission-summary-chip--idle {
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
-    color: var(--ink-faint);
   }
 
   .process-modal-groups {
@@ -1327,6 +1381,10 @@
   @media (max-width: 1240px) {
     .roles-shell {
       grid-template-columns: 1fr;
+    }
+
+    .roles-rail {
+      position: static;
     }
 
     .role-hero {
