@@ -139,12 +139,22 @@ func (a *App) AddRelation(idEnt1 int, idEnt2 int, relation string) error {
 	}
 	return nil
 }
-func (a *App) AddAttribute(entityId int, name string, description string, attType string) error {
+func (a *App) AddAttribute(entityId int, name string, description string, attType string, attKeyType string, attDomain []string) error {
 	prj, err := utils.GetActualProject()
 	if err != nil {
 		return err
 	}
-	if err := prj.AddAttribute(entityId, name, description, attType); err != nil {
+	if err := prj.AddAttribute(entityId, name, description, attType, utils.AttributeKeyType(attKeyType), attDomain); err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) AddIntersectionAttribute(relationID int, name string, description string, attType string, attDomain []string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.AddIntersectionAttribute(relationID, name, description, attType, attDomain); err != nil {
 		return err
 	}
 	return nil
@@ -160,12 +170,22 @@ func (a *App) RemoveRelation(id int) error {
 	}
 	return nil
 }
-func (a *App) EditAttribute(entityId int, attributeId int, name string, description string, attType string) error {
+func (a *App) EditAttribute(entityId int, attributeId int, name string, description string, attType string, attKeyType string, attDomain []string) error {
 	prj, err := utils.GetActualProject()
 	if err != nil {
 		return err
 	}
-	if err := prj.EditAttribute(entityId, attributeId, name, description, attType); err != nil {
+	if err := prj.EditAttribute(entityId, attributeId, name, description, attType, utils.AttributeKeyType(attKeyType), attDomain); err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) EditIntersectionAttribute(relationID int, attributeId int, name string, description string, attType string, attDomain []string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.EditIntersectionAttribute(relationID, attributeId, name, description, attType, attDomain); err != nil {
 		return err
 	}
 	return nil
@@ -180,12 +200,32 @@ func (a *App) RemoveAttribute(entityId int, attributeId int) error {
 	}
 	return nil
 }
+func (a *App) RemoveIntersectionAttribute(relationID int, attributeId int) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.RemoveIntersectionAttribute(relationID, attributeId); err != nil {
+		return err
+	}
+	return nil
+}
 func (a *App) RemoveEntity(id int) error {
 	prj, err := utils.GetActualProject()
 	if err != nil {
 		return err
 	}
 	if err := prj.RemoveEntity(id); err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) EditIntersectionEntityDescription(relationID int, description string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.EditIntersectionEntityDescription(relationID, description); err != nil {
 		return err
 	}
 	return nil
@@ -210,6 +250,16 @@ func (a *App) MoveAttribute(entityId int, attributeId int, direction string) err
 	}
 	return nil
 }
+func (a *App) MoveIntersectionAttribute(relationID int, attributeId int, direction string) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.MoveIntersectionAttribute(relationID, attributeId, direction); err != nil {
+		return err
+	}
+	return nil
+}
 func (a *App) GetEntity(id int) (*utils.Entity, error) {
 	prj, err := utils.GetActualProject()
 	if err != nil {
@@ -229,6 +279,11 @@ func (a *App) GetCombinatory() ([]utils.RelationView, error) {
 	comb := prj.GetCombinatoryModel()
 	return comb, nil
 }
+
+func (a *App) GetRelationTypes() []string {
+	return utils.GetAllowedRelationTypes()
+}
+
 func (a *App) PickProjectJSON() (string, error) {
 	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Selecciona proyecto.json",

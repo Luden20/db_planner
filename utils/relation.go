@@ -2,11 +2,28 @@ package utils
 
 import "fmt"
 
+const (
+	RelationType11 = "1:1"
+	RelationType1N = "1:N"
+	RelationTypeN1 = "N:1"
+	RelationTypeNN = "N:N"
+)
+
 var allowedRelationValues = map[string]struct{}{
-	"1:1": {},
-	"1:N": {},
-	"N:1": {},
-	"N:N": {},
+	RelationType11: {},
+	RelationType1N: {},
+	RelationTypeN1: {},
+	RelationTypeNN: {},
+}
+
+func GetAllowedRelationTypes() []string {
+	return []string{
+		"",
+		RelationType11,
+		RelationType1N,
+		RelationTypeN1,
+		RelationTypeNN,
+	}
 }
 
 type Relation struct {
@@ -27,6 +44,15 @@ type RelationView struct {
 	PrincipalEntity   string
 	IdPrincipalEntity int
 	Relations         []RelationViewItem
+}
+
+func (p *DbProject) GetRelationByID(id int) *Relation {
+	for idx := range p.Relations {
+		if p.Relations[idx].Id == id {
+			return &p.Relations[idx]
+		}
+	}
+	return nil
 }
 
 func normalizePair(id1 int, id2 int) (int, int) {
@@ -70,6 +96,26 @@ func (p *DbProject) normalizeRelations() {
 	}
 }
 
+func (p *DbProject) syncIntersectionEntitiesFromRelations() {
+	p.ensureEntities()
+	for idx := range p.Relations {
+		p.ensureIntersectionEntityForRelation(&p.Relations[idx])
+	}
+	validRelationIDs := make(map[int]struct{}, len(p.Relations))
+	for _, relation := range p.Relations {
+		if relation.Relation == "N:N" {
+			validRelationIDs[relation.Id] = struct{}{}
+		}
+	}
+	filtered := make([]IntersectionEntity, 0, len(p.IntersectionEntities))
+	for _, item := range p.IntersectionEntities {
+		if _, ok := validRelationIDs[item.RelationID]; ok {
+			filtered = append(filtered, item)
+		}
+	}
+	p.IntersectionEntities = filtered
+}
+
 func (p *DbProject) AddRelation(idEnt1 int, idEnt2 int, relation string) error {
 	if !isAllowedRelationValue(relation) {
 		return fmt.Errorf("invalid relation type: %s", relation)
@@ -85,6 +131,7 @@ func (p *DbProject) AddRelation(idEnt1 int, idEnt2 int, relation string) error {
 		rel.IdEntity1 = idEnt1
 		rel.IdEntity2 = idEnt2
 		rel.Relation = relation
+		p.ensureIntersectionEntityForRelation(rel)
 		return nil
 	}
 
@@ -97,6 +144,7 @@ func (p *DbProject) AddRelation(idEnt1 int, idEnt2 int, relation string) error {
 		Relation:  relation,
 	}
 	p.Relations = append(p.Relations, newRelation)
+	p.ensureIntersectionEntityForRelation(&p.Relations[len(p.Relations)-1])
 	return nil
 }
 
@@ -109,6 +157,7 @@ func (p *DbProject) RemoveRelation(id int) error {
 		newRels = append(newRels, relation)
 	}
 	p.Relations = newRels
+	p.removeIntersectionEntityByRelationID(id)
 	return nil
 }
 

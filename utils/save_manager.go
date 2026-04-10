@@ -63,6 +63,7 @@ func CreateNew(path string, name string) (*DbProject, error) {
 			var project DbProject
 			project.Name = name
 			project.Entities = make([]Entity, 0)
+			project.IntersectionEntities = make([]IntersectionEntity, 0)
 			project.Relations = make([]Relation, 0)
 			project.BigProcesses = make([]BigProcess, 0)
 			project.Roles = make([]Role, 0)
@@ -117,10 +118,37 @@ func LoadProjectFromJson(path string) (*DbProject, error) {
 					}
 				}
 			}
+			var legacyIntersections struct {
+				IntersectionEntities []Entity
+			}
+			if err := json.Unmarshal(data, &legacyIntersections); err == nil && len(legacyIntersections.IntersectionEntities) > 0 {
+				shouldConvertLegacy := len(project.IntersectionEntities) == 0
+				if !shouldConvertLegacy {
+					shouldConvertLegacy = true
+					for _, item := range project.IntersectionEntities {
+						if item.Entity.Id != 0 || item.RelationID != 0 {
+							shouldConvertLegacy = false
+							break
+						}
+					}
+				}
+				if shouldConvertLegacy {
+					project.IntersectionEntities = make([]IntersectionEntity, 0, len(legacyIntersections.IntersectionEntities))
+					for _, entity := range legacyIntersections.IntersectionEntities {
+						project.IntersectionEntities = append(project.IntersectionEntities, IntersectionEntity{
+							RelationID: 0,
+							Entity:     entity,
+						})
+					}
+				}
+			}
+			project.ensureEntities()
 			project.ensureAttributes()
 			project.ensureProcesses()
 			project.ensureRoles()
 			project.normalizeRelations()
+			project.relinkIntersectionEntities()
+			project.syncIntersectionEntitiesFromRelations()
 			project.syncCounters()
 			singleInstance = &SingletonData{
 				project: &project,

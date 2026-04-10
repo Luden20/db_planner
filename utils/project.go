@@ -1,21 +1,23 @@
 package utils
 
 type DbProject struct {
-	Name                       string
-	Entities                   []Entity
-	EntitiesLastMax            int
-	Relations                  []Relation
-	BigProcesses               []BigProcess
-	Roles                      []Role
-	RelationsLastMax           int
-	AttributesLastMax          int
-	BigProcessLastMax          int
-	ProcessLastMax             int
-	StepsLastMax               int
-	StepResourceLastMax        int
-	RoleLastMax                int
-	ProcessPermissionLastMax   int
-	RoleTablePermissionLastMax int
+	Name                        string
+	Entities                    []Entity
+	EntitiesLastMax             int
+	IntersectionEntities        []IntersectionEntity
+	IntersectionEntitiesLastMax int
+	Relations                   []Relation
+	BigProcesses                []BigProcess
+	Roles                       []Role
+	RelationsLastMax            int
+	AttributesLastMax           int
+	BigProcessLastMax           int
+	ProcessLastMax              int
+	StepsLastMax                int
+	StepResourceLastMax         int
+	RoleLastMax                 int
+	ProcessPermissionLastMax    int
+	RoleTablePermissionLastMax  int
 }
 
 func (p *DbProject) syncCounters() {
@@ -83,6 +85,7 @@ func (p *DbProject) syncCounters() {
 	if p.RoleTablePermissionLastMax < maxRoleTablePermissionID {
 		p.RoleTablePermissionLastMax = maxRoleTablePermissionID
 	}
+	p.ensureEntities()
 	maxEntityID := 0
 	for _, entity := range p.Entities {
 		if entity.Id > maxEntityID {
@@ -91,6 +94,16 @@ func (p *DbProject) syncCounters() {
 	}
 	if p.EntitiesLastMax < maxEntityID {
 		p.EntitiesLastMax = maxEntityID
+	}
+
+	maxIntersectionEntityID := 0
+	for _, item := range p.IntersectionEntities {
+		if item.Entity.Id > maxIntersectionEntityID {
+			maxIntersectionEntityID = item.Entity.Id
+		}
+	}
+	if p.IntersectionEntitiesLastMax < maxIntersectionEntityID {
+		p.IntersectionEntitiesLastMax = maxIntersectionEntityID
 	}
 
 	maxRelationID := -1
@@ -108,6 +121,13 @@ func (p *DbProject) syncCounters() {
 	p.ensureAttributes()
 	for _, entity := range p.Entities {
 		for _, att := range entity.Attributes {
+			if att.Id > maxAttributeID {
+				maxAttributeID = att.Id
+			}
+		}
+	}
+	for _, item := range p.IntersectionEntities {
+		for _, att := range item.Entity.Attributes {
 			if att.Id > maxAttributeID {
 				maxAttributeID = att.Id
 			}

@@ -1,15 +1,22 @@
   <script lang="ts">
   import ModalLauncher from "../ModalLauncher.svelte";
-  import {RemoveAttribute, Save} from "../../../wailsjs/go/main/App";
+  import {RemoveAttribute, RemoveIntersectionAttribute, Save} from "../../../wailsjs/go/main/App";
   import {showToast} from "../../lib/toast";
 
-  export let entityId: number;
+  export let entityId: number | null = null;
+  export let relationId: number | null = null;
   export let attributeId: number;
   export let onSaved: () => Promise<void> = async () => {};
 
   const handleRemove = async () => {
     try {
-      await RemoveAttribute(entityId, attributeId);
+      if (relationId !== null) {
+        await RemoveIntersectionAttribute(relationId, attributeId);
+      } else if (entityId !== null) {
+        await RemoveAttribute(entityId, attributeId);
+      } else {
+        throw new Error("No se encontro el contenedor del atributo.");
+      }
       await Save();
       await onSaved();
       showToast("Atributo eliminado.", "success");
