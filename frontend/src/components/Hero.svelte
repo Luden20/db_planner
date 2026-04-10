@@ -1,142 +1,308 @@
 <script lang="ts">
+  import ButtonIcon from "./ButtonIcon.svelte";
+
   export let onOpen: () => void;
   export let onCreate: () => void;
+
+  const features = [
+    { icon: "database", label: "Entorno Local" },
+    { icon: "relations", label: "Flujo Técnico" },
+    { icon: "save", label: "Auto-guardado" },
+    { icon: "check", label: "Validación Lógica" }
+  ];
 </script>
 
 <section class="hero">
-  <div class="hero-text">
-    <p class="kicker">DB Planner </p>
-    <h1>Modela tu esquema de base de datos de forma facil</h1>
-    <p class="hint">Por Alfonso Chafla (Propiedad intelectual)</p>
+  <div class="hero-content">
+    <header class="hero-header">
+      <div class="hero-badge">
+        <ButtonIcon name="spark" />
+        <span>DB Planner v2.0</span>
+      </div>
+      <h1>Modela tu base de datos <span class="text-accent">sin fricciones</span></h1>
+      <p class="hero-subtitle">
+        Diseña esquemas profesionales, gestiona relaciones complejas y visualiza el flujo de datos en tiempo real.
+      </p>
+    </header>
 
+    <div class="hero-features">
+      {#each features as feature}
+        <div class="feature-tag">
+          <ButtonIcon name={feature.icon} />
+          <span>{feature.label}</span>
+        </div>
+      {/each}
+    </div>
+
+    <footer class="hero-footer">
+      <div class="hero-actions">
+        <button class="control control--primary control--stack" on:click={onCreate}>
+          <div class="control__label">
+            <ButtonIcon name="plus" />
+            <span>Crear Proyecto</span>
+          </div>
+          <span class="control__meta">Inicia un nuevo esquema desde cero</span>
+        </button>
+
+        <button class="control control--soft control--stack" on:click={onOpen}>
+          <div class="control__label">
+            <ButtonIcon name="folder" />
+            <span>Cargar Existente</span>
+          </div>
+          <span class="control__meta">Continúa trabajando en tus archivos .json</span>
+        </button>
+      </div>
+
+      <div class="hero-credits">
+        <p class="hint">Diseñado por <strong>Alfonso Chafla</strong></p>
+        <span class="copyright-tag">Propiedad intelectual</span>
+      </div>
+    </footer>
   </div>
-  <div class="hero-actions">
-    <button class="btn secondary" on:click={onOpen}>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4.75 6.5A1.75 1.75 0 0 0 3 8.25v8.5A2.25 2.25 0 0 0 5.25 19h13.5A2.25 2.25 0 0 0 21 16.75v-8A2.25 2.25 0 0 0 18.75 6.5h-6.19c-.3 0-.59-.13-.8-.36l-.7-.74A1.75 1.75 0 0 0 9.56 5H5.75c-.37 0-.73.12-1 .34v1.16Zm0 1.5V6a.25.25 0 0 1 .25-.25h3.4c.2 0 .4.09.53.24l.7.74c.46.49 1.1.77 1.77.77h7.35a.75.75 0 0 1 .75.75V8h-14.7ZM5.25 17.5a.75.75 0 0 1-.75-.75V9.5h15v7.25a.75.75 0 0 1-.75.75H5.25Z"/>
-      </svg>
-      <span>Cargar proyecto</span>
-    </button>
-    <button class="btn primary" on:click={onCreate}>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 4a.75.75 0 0 0-.75.75V11H5.75a.75.75 0 0 0 0 1.5h5.5v6.25a.75.75 0 0 0 1.5 0V12.5h5.5a.75.75 0 0 0 0-1.5h-5.5V4.75A.75.75 0 0 0 12 4Z"/>
-      </svg>
-      <span>Crear proyecto</span>
-    </button>
-    <p class="hero-meta">Entorno local, flujo tecnico y guardado persistente.</p>
+
+  <div class="hero-visual">
+    <div class="visual-orb visual-orb--1"></div>
+    <div class="visual-orb visual-orb--2"></div>
+    <div class="visual-grid"></div>
   </div>
 </section>
 
 <style>
   .hero {
     position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
-    gap: 28px;
-    padding: clamp(1.4rem, 3vw, 2.4rem);
+    display: flex;
+    flex-direction: column;
+    min-height: clamp(400px, 70vh, 800px);
+    padding: clamp(2rem, 5vw, 4rem);
     border-radius: var(--radius-lg);
-    border: 1px solid var(--border);
-    background:
-      linear-gradient(
-        135deg,
-        color-mix(in srgb, var(--surface-strong) 94%, transparent),
-        color-mix(in srgb, var(--bg-muted) 72%, transparent)
-      ),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 45%);
+    border: 1px solid var(--border-strong);
+    background: var(--panel-surface-strong);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
 
-  .hero::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-      linear-gradient(var(--grid-line) 1px, transparent 1px);
-    background-size: 22px 22px;
-    mask-image: linear-gradient(135deg, black, transparent 72%);
-    opacity: 0.5;
-    pointer-events: none;
-  }
-
-  .hero-text,
-  .hero-actions {
+  .hero-content {
     position: relative;
-    z-index: 1;
-  }
-
-  .hero-text h1 {
-    margin: 0;
-    max-width: 11ch;
-    font-size: clamp(2.5rem, 6vw, 4.8rem);
-    line-height: 0.92;
-  }
-
-  .kicker {
-    margin: 0 0 0.75rem;
-    color: var(--accent);
-    text-transform: uppercase;
-    font-size: 0.76rem;
-    letter-spacing: 0.18em;
-    font-weight: 800;
-  }
-
-  .hint {
-    margin: 1rem 0 0;
-    max-width: 58ch;
-    color: var(--ink-soft);
-    font-size: 1.02rem;
-    line-height: 1.65;
-  }
-
-  .hero-notes {
+    z-index: 2;
+    max-width: 800px;
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.65rem;
-    margin-top: 1.4rem;
+    flex-direction: column;
+    gap: 2.5rem;
   }
 
-  .hero-notes span {
+  .hero-header {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+  }
+
+  .hero-badge {
     display: inline-flex;
     align-items: center;
-    min-height: 2.2rem;
-    padding: 0 0.9rem;
+    gap: 0.6rem;
+    padding: 0.4rem 0.8rem;
+    padding-right: 1rem;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    color: var(--accent);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
-    border: 1px solid var(--line-soft);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    width: fit-content;
+    text-transform: uppercase;
+  }
+
+  .hero-badge :global(svg) {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .hero h1 {
+    margin: 0;
+    font-size: clamp(2.5rem, 8vw, 4.2rem);
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+    color: var(--ink);
+  }
+
+  .text-accent {
+    color: var(--accent);
+    position: relative;
+    display: inline-block;
+  }
+
+  .text-accent::after {
+    content: "";
+    position: absolute;
+    bottom: 0.15em;
+    left: 0;
+    right: 0;
+    height: 0.2em;
+    background: var(--accent);
+    opacity: 0.15;
+    z-index: -1;
+    border-radius: 2px;
+  }
+
+  .hero-subtitle {
+    margin: 0;
+    max-width: 42ch;
+    font-size: 1.25rem;
+    line-height: 1.5;
     color: var(--ink-soft);
+  }
+
+  .hero-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+  }
+
+  .feature-tag {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
     font-size: 0.88rem;
-    font-weight: 700;
+    font-weight: 600;
+    color: var(--ink-soft);
+    backdrop-filter: var(--glass);
+    box-shadow: var(--shadow-inner);
+    transition: all 0.2s ease;
+  }
+
+  .feature-tag:hover {
+    border-color: var(--accent);
+    color: var(--ink);
+    transform: translateY(-2px);
+  }
+
+  .feature-tag :global(svg) {
+    width: 1rem;
+    height: 1rem;
+    opacity: 0.7;
+  }
+
+  .hero-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
   }
 
   .hero-actions {
-    display: grid;
-    align-content: start;
-    gap: 0.9rem;
-    padding: 1.15rem;
-    border-radius: calc(var(--radius-md) - 2px);
-    border: 1px solid var(--line-soft);
-    background: color-mix(in srgb, var(--surface) 84%, transparent);
-    box-shadow: var(--surface-highlight);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.2rem;
   }
 
-  .hero-actions :global(.btn) {
-    justify-content: center;
-    min-height: 3.2rem;
+  .hero-actions .control {
+    flex: 1;
+    min-width: 240px;
   }
 
-  .hero-meta {
-    margin: 0.2rem 0 0;
-    color: var(--ink-faint);
+  .control__label {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.1rem;
+  }
+
+  .control__label :global(svg) {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+
+  .hero-credits {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line-faint);
+  }
+
+  .hero-credits .hint {
+    margin: 0;
     font-size: 0.9rem;
-    line-height: 1.55;
   }
 
-  @media (max-width: 720px) {
+  .copyright-tag {
+    font-size: 0.72rem;
+    padding: 0.2rem 0.5rem;
+    background: var(--line-faint);
+    color: var(--ink-faint);
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  /* Visual Elements */
+  .hero-visual {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .visual-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 30px 30px;
+    mask-image: radial-gradient(circle at 70% 40%, black, transparent 80%);
+    opacity: 0.4;
+  }
+
+  .visual-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.15;
+    mix-blend-mode: multiply;
+  }
+
+  :global([data-theme="dark"]) .visual-orb {
+    mix-blend-mode: screen;
+    opacity: 0.1;
+  }
+
+  .visual-orb--1 {
+    top: 10%;
+    right: 5%;
+    width: 40%;
+    height: 60%;
+    background: var(--accent);
+  }
+
+  .visual-orb--2 {
+    bottom: -10%;
+    left: 20%;
+    width: 30%;
+    height: 40%;
+    background: var(--edit);
+  }
+
+  @media (max-width: 640px) {
     .hero {
-      grid-template-columns: 1fr;
-      gap: 1.25rem;
+      padding: 2rem;
+    }
+    .hero-actions .control {
+      flex: 1 1 100%;
+    }
+    .hero h1 {
+      font-size: 2.8rem;
+    }
+    .hero-credits {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
     }
   }
 </style>

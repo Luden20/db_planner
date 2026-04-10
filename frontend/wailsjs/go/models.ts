@@ -6,6 +6,7 @@ export namespace utils {
 	    Description: string;
 	    Type: string;
 	    KeyType: string;
+	    Optional: boolean;
 	    Domain: string[];
 	
 	    static createFrom(source: any = {}) {
@@ -19,6 +20,7 @@ export namespace utils {
 	        this.Description = source["Description"];
 	        this.Type = source["Type"];
 	        this.KeyType = source["KeyType"];
+	        this.Optional = source["Optional"];
 	        this.Domain = source["Domain"];
 	    }
 	}

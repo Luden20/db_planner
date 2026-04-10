@@ -22,6 +22,7 @@
   let error = "";
   let typeSelection = "Por definir";
   let isPrimaryKey = false;
+  let isOptional = false;
   let lengthInput = "";
   let domainValues: string[] = [];
   let domainDraft = "";
@@ -62,6 +63,7 @@
       const parsed = parseType(attribute.Type || "Por definir");
       typeSelection = parsed.type;
       isPrimaryKey = allowPrimaryKey && attribute.KeyType === "pk";
+      isOptional = !!attribute.Optional;
       lengthInput = parsed.length;
       domainValues = Array.isArray(attribute.Domain) ? [...attribute.Domain] : [];
     } else {
@@ -69,6 +71,7 @@
       description = "";
       typeSelection = "Por definir";
       isPrimaryKey = false;
+      isOptional = false;
       lengthInput = "";
       domainValues = [];
     }
@@ -126,6 +129,16 @@
 
     error = "";
     isPrimaryKey = !isPrimaryKey;
+    if (isPrimaryKey) {
+      isOptional = false;
+    }
+  };
+
+  const toggleOptional = () => {
+    if (isPrimaryKey) {
+      return;
+    }
+    isOptional = !isOptional;
   };
 
   const openTypeMenu = async () => {
@@ -257,14 +270,14 @@
       const keyTypeSelection = isPrimaryKey ? "pk" : "nil";
       if (relationId !== null) {
         if (attribute) {
-          await EditIntersectionAttribute(relationId, attribute.Id, trimmedName, description.trim(), finalType, normalizeDomainValues(domainValues));
+          await EditIntersectionAttribute(relationId, attribute.Id, trimmedName, description.trim(), finalType, isOptional, normalizeDomainValues(domainValues));
         } else {
-          await AddIntersectionAttribute(relationId, trimmedName, description.trim(), finalType, normalizeDomainValues(domainValues));
+          await AddIntersectionAttribute(relationId, trimmedName, description.trim(), finalType, isOptional, normalizeDomainValues(domainValues));
         }
       } else if (entityId !== null && attribute) {
-        await EditAttribute(entityId, attribute.Id, trimmedName, description.trim(), finalType, keyTypeSelection, normalizeDomainValues(domainValues));
+        await EditAttribute(entityId, attribute.Id, trimmedName, description.trim(), finalType, keyTypeSelection, isOptional, normalizeDomainValues(domainValues));
       } else if (entityId !== null) {
-        await AddAttribute(entityId, trimmedName, description.trim(), finalType, keyTypeSelection, normalizeDomainValues(domainValues));
+        await AddAttribute(entityId, trimmedName, description.trim(), finalType, keyTypeSelection, isOptional, normalizeDomainValues(domainValues));
       } else {
         throw new Error("No se encontro la entidad destino.");
       }
@@ -275,6 +288,7 @@
         description = "";
         typeSelection = "Por definir";
         isPrimaryKey = false;
+        isOptional = false;
         lengthInput = "";
         domainValues = [];
         domainDraft = "";
@@ -384,6 +398,27 @@
       </button>
     </div>
   {/if}
+
+  <div class="field">
+    <label for="attr-optional">Nulabilidad</label>
+    <button
+      id="attr-optional"
+      type="button"
+      class={`pk-toggle ${isOptional ? 'pk-toggle--active' : ''}`}
+      role="switch"
+      disabled={isPrimaryKey}
+      aria-checked={isOptional}
+      on:click={toggleOptional}
+    >
+      <span class="pk-toggle__rail">
+        <span class="pk-toggle__thumb"></span>
+      </span>
+      <span class="pk-toggle__copy">
+        <strong>{isOptional ? "Opcional" : "Mandatorio"}</strong>
+        <span>{isPrimaryKey ? "Las PK siempre son mandatorias." : (isOptional ? "Este atributo puede ser nulo." : "Este atributo es obligatorio.")}</span>
+      </span>
+    </button>
+  </div>
 
   <div class="field">
     <label for="attr-domain">Dominio</label>

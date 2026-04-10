@@ -25,6 +25,8 @@
   --danger-soft: rgba(170, 76, 59, 0.14);
   --shadow-sm: 0 14px 30px rgba(63, 53, 35, 0.08);
   --shadow-lg: 0 28px 70px rgba(63, 53, 35, 0.14);
+  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+  --glass: blur(12px) saturate(180%);
   --radius-sm: 16px;
   --radius-md: 22px;
   --radius-lg: 30px;

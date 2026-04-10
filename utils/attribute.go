@@ -20,6 +20,7 @@ type Attribute struct {
 	Description string
 	Type        string
 	KeyType     AttributeKeyType
+	Optional    bool
 	Domain      []string
 }
 
@@ -144,7 +145,7 @@ func (p *DbProject) AddToDomain(entityId int, attributeId int, value string) err
 	return fmt.Errorf("Attribute Not Found")
 }
 
-func (p *DbProject) AddAttribute(entityId int, name string, description string, attType string, attKeyType AttributeKeyType, attDomain []string) error {
+func (p *DbProject) AddAttribute(entityId int, name string, description string, attType string, attKeyType AttributeKeyType, optional bool, attDomain []string) error {
 	ent := p.GetEntity(entityId)
 	if ent == nil {
 		return fmt.Errorf("Entity Not Found")
@@ -166,6 +167,7 @@ func (p *DbProject) AddAttribute(entityId int, name string, description string, 
 		Description: description,
 		Type:        defaultAttributeType(attType),
 		KeyType:     nextKeyType,
+		Optional:    optional,
 		Domain:      normalizeDomain(attDomain),
 	}
 	ent.Attributes = append(ent.Attributes, att)
@@ -173,7 +175,7 @@ func (p *DbProject) AddAttribute(entityId int, name string, description string, 
 	return nil
 }
 
-func (p *DbProject) AddIntersectionAttribute(relationID int, name string, description string, attType string, attDomain []string) error {
+func (p *DbProject) AddIntersectionAttribute(relationID int, name string, description string, attType string, optional bool, attDomain []string) error {
 	item := p.GetIntersectionEntityByRelationID(relationID)
 	if item == nil {
 		return fmt.Errorf("Intersection Entity Not Found")
@@ -189,13 +191,14 @@ func (p *DbProject) AddIntersectionAttribute(relationID int, name string, descri
 		Description: description,
 		Type:        defaultAttributeType(attType),
 		KeyType:     AttributeKeyNone,
+		Optional:    optional,
 		Domain:      normalizeDomain(attDomain),
 	}
 	item.Entity.Attributes = append(item.Entity.Attributes, att)
 	return nil
 }
 
-func (p *DbProject) EditAttribute(entityId int, attributeId int, name string, description string, attType string, attKeyType AttributeKeyType, attDomain []string) error {
+func (p *DbProject) EditAttribute(entityId int, attributeId int, name string, description string, attType string, attKeyType AttributeKeyType, optional bool, attDomain []string) error {
 	ent := p.GetEntity(entityId)
 	if ent == nil {
 		return fmt.Errorf("Entity Not Found")
@@ -212,6 +215,7 @@ func (p *DbProject) EditAttribute(entityId int, attributeId int, name string, de
 			ent.Attributes[idx].Description = description
 			ent.Attributes[idx].Type = defaultAttributeType(attType)
 			ent.Attributes[idx].KeyType = nextKeyType
+			ent.Attributes[idx].Optional = optional
 			ent.Attributes[idx].Domain = normalizeDomain(attDomain)
 			ensureStrongEntityApprovalConsistency(ent)
 			return nil
@@ -220,7 +224,7 @@ func (p *DbProject) EditAttribute(entityId int, attributeId int, name string, de
 	return fmt.Errorf("Attribute Not Found")
 }
 
-func (p *DbProject) EditIntersectionAttribute(relationID int, attributeId int, name string, description string, attType string, attDomain []string) error {
+func (p *DbProject) EditIntersectionAttribute(relationID int, attributeId int, name string, description string, attType string, optional bool, attDomain []string) error {
 	item := p.GetIntersectionEntityByRelationID(relationID)
 	if item == nil {
 		return fmt.Errorf("Intersection Entity Not Found")
@@ -231,6 +235,7 @@ func (p *DbProject) EditIntersectionAttribute(relationID int, attributeId int, n
 			item.Entity.Attributes[idx].Description = description
 			item.Entity.Attributes[idx].Type = defaultAttributeType(attType)
 			item.Entity.Attributes[idx].KeyType = AttributeKeyNone
+			item.Entity.Attributes[idx].Optional = optional
 			item.Entity.Attributes[idx].Domain = normalizeDomain(attDomain)
 			return nil
 		}

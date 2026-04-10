@@ -295,11 +295,41 @@
     }
   };
 
+  let stickySentinel: HTMLDivElement | null = null;
+  let stickyStack: HTMLDivElement | null = null;
+  let stickyStackHeight = 0;
+  let stickyStackPinned = false;
+
+  const syncStickyState = () => {
+    if (!stickySentinel) {
+      stickyStackPinned = false;
+      return;
+    }
+    stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
+  };
+
+  const syncStickyStackHeight = () => {
+    stickyStackHeight = stickyStack?.offsetHeight ?? 0;
+  };
+
   onMount(() => {
     const handleWindowBlur = () => closeContextMenu();
     window.addEventListener("blur", handleWindowBlur);
+
+    syncStickyStackHeight();
+    syncStickyState();
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && stickyStack) {
+      observer = new ResizeObserver(() => {
+        syncStickyStackHeight();
+      });
+      observer.observe(stickyStack);
+    }
+
     return () => {
       window.removeEventListener("blur", handleWindowBlur);
+      observer?.disconnect();
     };
   });
 
@@ -334,51 +364,64 @@
   $: if (activeSearchMatchId !== null && activeSearchMatchId !== lastScrolledMatchId) {
     focusSearchMatch(activeSearchMatchId);
   }
+  $: if (stickySentinel) {
+    syncStickyState();
+  }
+  $: if (stickyStack) {
+    syncStickyStackHeight();
+  }
 </script>
 
-<svelte:window on:click={closeContextMenu} on:keydown={handleWindowKeydown} on:scroll={closeContextMenu}/>
+<svelte:window on:click={closeContextMenu} on:keydown={handleWindowKeydown} on:scroll={() => { closeContextMenu(); syncStickyState(); }} on:resize={syncStickyState}/>
 
-<section class="entities-studio">
-  <div class="tab-toolbar tab-toolbar--studio">
-    <div>
-      <p class="label">Entidades</p>
-      <p class="muted">Gestiona entidades fuertes e intersecciones N:N desde el mismo estudio.</p>
-    </div>
-    <div class="entities-toolbar__side">
-      <div class="scope-switch" role="tablist" aria-label="Tipo de entidad">
-        <button
-          class={`scope-switch__item ${activeScope === 'strong' ? 'scope-switch__item--active' : ''}`}
-          type="button"
-          role="tab"
-          aria-selected={activeScope === "strong"}
-          on:click={() => switchScope("strong")}
-        >
-          Fuertes
-        </button>
-        <button
-          class={`scope-switch__item ${activeScope === 'intersection' ? 'scope-switch__item--active' : ''}`}
-          type="button"
-          role="tab"
-          aria-selected={activeScope === "intersection"}
-          on:click={() => switchScope("intersection")}
-        >
-          Intersección
-        </button>
+<section class="entities-studio" style={`--entities-sticky-total-height: ${stickyStackHeight}px;`}>
+  <div class="entities-sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
+  <div
+    class:entities-sticky-stack={true}
+    class:entities-sticky-stack--pinned={stickyStackPinned}
+    bind:this={stickyStack}
+  >
+    <div class="tab-toolbar tab-toolbar--studio">
+      <div>
+        <p class="label">Entidades</p>
+        <p class="muted">Gestiona entidades fuertes e intersecciones N:N desde el mismo estudio.</p>
       </div>
-      <div class="entities-toolbar__meta">
-        <span class="studio-chip">{activeScope === "strong" ? entities.length : intersectionEntities.length} {activeScope === "strong" ? "fuertes" : "intersecciones"}</span>
+      <div class="entities-toolbar__side">
+        <div class="scope-switch" role="tablist" aria-label="Tipo de entidad">
+          <button
+            class={`scope-switch__item ${activeScope === 'strong' ? 'scope-switch__item--active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeScope === "strong"}
+            on:click={() => switchScope("strong")}
+          >
+            Fuertes
+          </button>
+          <button
+            class={`scope-switch__item ${activeScope === 'intersection' ? 'scope-switch__item--active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeScope === "intersection"}
+            on:click={() => switchScope("intersection")}
+          >
+            Intersección
+          </button>
+        </div>
+        <div class="entities-toolbar__meta">
+          <span class="studio-chip">{activeScope === "strong" ? entities.length : intersectionEntities.length} {activeScope === "strong" ? "fuertes" : "intersecciones"}</span>
+          {#if activeScope === "strong"}
+            <span class="studio-chip studio-chip--quiet">{approvedCount()} aprobadas</span>
+          {/if}
+          {#if normalizedSearchQuery && activeScope === "strong"}
+            <span class="studio-chip studio-chip--quiet">{searchMatchIds.length} coincidencias</span>
+          {:else if normalizedSearchQuery && activeScope === "intersection"}
+            <span class="studio-chip studio-chip--quiet">{filteredIntersectionEntities.length} coincidencias</span>
+          {/if}
+        </div>
         {#if activeScope === "strong"}
-          <span class="studio-chip studio-chip--quiet">{approvedCount()} aprobadas</span>
-        {/if}
-        {#if normalizedSearchQuery && activeScope === "strong"}
-          <span class="studio-chip studio-chip--quiet">{searchMatchIds.length} coincidencias</span>
-        {:else if normalizedSearchQuery && activeScope === "intersection"}
-          <span class="studio-chip studio-chip--quiet">{filteredIntersectionEntities.length} coincidencias</span>
+          <CreateEntity onSave={onSave}/>
         {/if}
       </div>
-      {#if activeScope === "strong"}
-        <CreateEntity onSave={onSave}/>
-      {/if}
     </div>
   </div>
 
@@ -389,7 +432,7 @@
       <div class="search-toolbar search-toolbar--studio">
         <div class="search-toolbar__copy">
           <p class="label">Filtro activo</p>
-          <p class="muted">Busca, recorre coincidencias y mantén el foco sobre la fila correcta.</p>
+          <p class="muted">Búsqueda rápida de entidades.</p>
         </div>
         <div class="search-toolbar__controls">
           <div class="search-field">
@@ -455,7 +498,7 @@
       <div class="entities-panel__head">
         <div>
           <p class="label">Inventario</p>
-          <p class="muted">{activeScope === "strong" ? "Arrastra filas para reordenar el modelo. Click derecho abre acciones rápidas de contexto." : "El nombre nace de la relación N:N. Solo puedes documentar su descripción."}</p>
+          <p class="muted">{activeScope === "strong" ? "Gestión de entidades fuertes." : "Gestión de intersecciones."}</p>
         </div>
       </div>
 
@@ -870,21 +913,50 @@
   .table-wrapper {
     background: var(--panel-surface-strong);
     border: 1px solid var(--border);
-    border-radius: calc(var(--radius-md) - 4px);
-    padding: 0.55rem;
+    border-radius: var(--radius-sm);
+    padding: 0;
     box-shadow: var(--surface-highlight);
+    max-height: calc(100vh - var(--entities-sticky-total-height, 0px) - 10rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 
   .entities-table {
     color: var(--ink);
+    border-collapse: collapse;
+    width: 100%;
   }
 
   .entities-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--surface-strong);
     color: var(--ink-faint);
-    border-bottom-color: var(--line-soft);
-    font-size: 0.76rem;
-    letter-spacing: 0.14em;
+    border-bottom: 2px solid var(--border);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
+    text-align: left;
+    padding: 0.75rem 1rem;
+    box-shadow: inset 0 -1px 0 var(--line-soft);
+  }
+
+  .entities-table thead th:first-child {
+    border-top-left-radius: var(--radius-sm);
+  }
+
+  .entities-table thead th:last-child {
+    border-top-right-radius: var(--radius-sm);
+  }
+
+  .entities-table tbody tr:last-child td:first-child {
+    border-bottom-left-radius: var(--radius-sm);
+  }
+
+  .entities-table tbody tr:last-child td:last-child {
+    border-bottom-right-radius: var(--radius-sm);
   }
 
   .entities-table tbody tr:nth-child(odd),
@@ -963,11 +1035,27 @@
     gap: 1rem;
   }
 
+  .entities-sticky-stack {
+    margin-bottom: 0;
+  }
+
+  .entities-sticky-stack--pinned {
+    position: sticky;
+    top: 0;
+    z-index: calc(var(--layer-ribbon, 100) - 2);
+    background: var(--surface-strong);
+  }
+
+  .entities-sticky-sentinel {
+    height: 1px;
+    margin-top: -1px;
+  }
+
   .entities-deck {
     display: grid;
     gap: 1rem;
     position: sticky;
-    top: 0.9rem;
+    top: calc(var(--entities-sticky-total-height) + 1rem);
   }
 
   .tab-toolbar--studio,

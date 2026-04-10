@@ -215,7 +215,7 @@ func (p *DbProject) ensureIntersectionEntityForRelation(relation *Relation) {
 		existing = &p.IntersectionEntities[index]
 	}
 
-	if relation.Relation != "N:N" {
+	if relation.Relation != RelationTypeNN {
 		if index >= 0 {
 			p.IntersectionEntities = append(p.IntersectionEntities[:index], p.IntersectionEntities[index+1:]...)
 		}
@@ -317,6 +317,14 @@ func (p *DbProject) GetEntity(id int) *Entity {
 		return &p.Entities[idx]
 	}
 	return nil
+}
+
+func (p *DbProject) IntersectionHasAttributes(relationID int) bool {
+	intersection := p.GetIntersectionEntityByRelationID(relationID)
+	if intersection == nil {
+		return false
+	}
+	return len(intersection.Entity.Attributes) > 0
 }
 
 func (p *DbProject) MoveEntity(id int, direction string) error {

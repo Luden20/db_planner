@@ -50,6 +50,7 @@
   let autoScrollDirection: -1 | 0 | 1 = 0;
   let approvalUpdating = false;
   let relationSummaryCount = 0;
+  let relationRules: utils.RelationRule[] = [];
 
   type InheritedPK = {
     entityName: string;
@@ -57,6 +58,7 @@
     description: string | null;
     type: string | null;
     isIntersection?: boolean;
+    isOptional?: boolean;
   };
 
   const getInheritedPKs = (entity: utils.Entity, project: utils.DbProject): InheritedPK[] => {
@@ -64,16 +66,27 @@
     
     const inherited: InheritedPK[] = [];
     
-    // Buscar relaciones donde esta entidad sea el lado "N" de una relación 1:N
     project.Relations.forEach(rel => {
       let otherEntityId: number | null = null;
-      
-      // En rel.Relation, "1:N" significa IdEntity1 es 1 y IdEntity2 es N
-      // "N:1" significa IdEntity1 es N y IdEntity2 es 1
-      if (rel.IdEntity1 === entity.Id && rel.Relation === "N:1") {
-        otherEntityId = rel.IdEntity2;
-      } else if (rel.IdEntity2 === entity.Id && rel.Relation === "1:N") {
-        otherEntityId = rel.IdEntity1;
+      let isOptional = false;
+
+      // Determinamos si se hereda a la Entidad 1
+      if (rel.IdEntity1 === entity.Id) {
+        // Tipos que heredan a la E1
+        if (rel.Relation === "N:1" || rel.Relation === "Np:1") {
+          otherEntityId = rel.IdEntity2;
+          isOptional = false; // El lado "1" siempre es mandatorio para el N
+        }
+      } 
+      // Determinamos si se hereda a la Entidad 2
+      else if (rel.IdEntity2 === entity.Id) {
+        if (rel.Relation === "1:N") {
+          otherEntityId = rel.IdEntity1;
+          isOptional = false;
+        } else if (rel.Relation === "1:Np") {
+          otherEntityId = rel.IdEntity1;
+          isOptional = true;
+        }
       }
 
       if (otherEntityId !== null) {
@@ -86,7 +99,8 @@
                 entityName: otherEntity.Name,
                 attributeName: pk.Name,
                 description: pk.Description,
-                type: pk.Type
+                type: pk.Type,
+                isOptional: isOptional
               });
             });
           } else {
@@ -94,7 +108,8 @@
               entityName: otherEntity.Name,
               attributeName: null,
               description: null,
-              type: null
+              type: null,
+              isOptional: isOptional
             });
           }
         }
@@ -111,8 +126,22 @@
     if (!rel) return [];
 
     const inherited: InheritedPK[] = [];
-    [rel.IdEntity1, rel.IdEntity2].forEach(id => {
-      const otherEntity = project.Entities?.find(e => e.Id === id);
+    
+    // En intersección (N:N), las PKs vienen de ambas entidades.
+    // Analizamos la opcionalidad basándonos en el tipo de relación.
+    // N:N -> Ambas mandatorias en la tabla de intersección (PK compuesta)
+    // N:Np -> E1 es mandatoria, E2 es opcional? 
+    // Realmente en una tabla de intersección pura, ambas suelen ser parte de la PK, por lo que son mandatorias.
+    // Pero si el usuario quiere marcar opcionalidad en el modelo lógico:
+    
+    const isE1Optional = false;
+    const isE2Optional = false;
+
+    [
+      { id: rel.IdEntity1, optional: isE1Optional },
+      { id: rel.IdEntity2, optional: isE2Optional }
+    ].forEach(target => {
+      const otherEntity = project.Entities?.find(e => e.Id === target.id);
       if (otherEntity) {
         const pkAttributes = otherEntity.Attributes?.filter(a => a.KeyType === "pk") || [];
         if (pkAttributes.length > 0) {
@@ -122,7 +151,8 @@
               attributeName: pk.Name,
               description: pk.Description,
               type: pk.Type,
-              isIntersection: true
+              isIntersection: true,
+              isOptional: target.optional
             });
           });
         } else {
@@ -131,7 +161,8 @@
             attributeName: null,
             description: null,
             type: null,
-            isIntersection: true
+            isIntersection: true,
+            isOptional: target.optional
           });
         }
       }
@@ -146,9 +177,11 @@
     "1:1": "Uno a uno",
     "1:N": "Uno a muchos",
     "N:1": "Muchos a uno",
-    "N:N": "Muchos a muchos"
+    "N:N": "Muchos a muchos",
+    "1:Np": "Uno a muchos (Opcional)",
+    "Np:1": "Muchos (Opcional) a uno"
   };
-  const relationTypeOrder = ["1:1", "1:N", "N:1", "N:N"];
+  const relationTypeOrder = ["1:1", "1:N", "N:1", "N:N", "1:Np", "Np:1"];
 
   const prefersReducedMotion = () =>
     typeof window !== "undefined"
@@ -284,6 +317,12 @@
     loadEntity(selectedId);
   }
 
+  $: if (activeScope === "intersection" && selectedIntersectionRelationId !== null) {
+    loadIntersectionRelationSummary(selectedIntersectionRelationId);
+  } else if (activeScope === "strong" && current) {
+    void loadRelationSummary(current);
+  }
+
   $: relationSummaryCount = relationSummary.reduce((total, group) => total + group.items.length, 0);
   $: if (!relationSummary.length) {
     activeRelationType = null;
@@ -311,7 +350,6 @@
         });
       }
       lastLoadedId = id;
-      await loadRelationSummary(current);
     } catch (err) {
       const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
       showToast(`No se pudo cargar la entidad: ${message}`, "error");
@@ -504,6 +542,36 @@
     }
   };
 
+  const loadIntersectionRelationSummary = (relationId: number) => {
+    if (!project?.Relations) {
+      relationSummary = [];
+      return;
+    }
+    const rel = project.Relations.find(r => r.Id === relationId);
+    if (!rel) {
+      relationSummary = [];
+      return;
+    }
+
+    const left = entities.find(e => e.Id === rel.IdEntity1);
+    const right = entities.find(e => e.Id === rel.IdEntity2);
+
+    const items: string[] = [];
+    if (left) items.push(left.Name);
+    if (right) items.push(right.Name);
+
+    if (items.length === 0) {
+      relationSummary = [];
+      return;
+    }
+
+    relationSummary = [{
+      type: "Padres",
+      label: "Entidades relacionadas",
+      items: items
+    }];
+  };
+
   const isApproved = (entity: utils.Entity | null) => entity?.Status === true;
   const attributeKeyLabel = (attribute: utils.Attribute) => attribute.KeyType === "pk" ? "PK" : "";
   const intersectionOriginLabel = (item: utils.IntersectionEntity | null) => {
@@ -516,7 +584,8 @@
     }
     const left = entities.find((entity) => entity.Id === relation.IdEntity1)?.Name ?? `Tabla ${relation.IdEntity1}`;
     const right = entities.find((entity) => entity.Id === relation.IdEntity2)?.Name ?? `Tabla ${relation.IdEntity2}`;
-    return `${left} <-> ${right}`;
+    const typeLabel = relationTypeLabels[relation.Relation] || relation.Relation;
+    return `${left} --[${typeLabel}]-- ${right}`;
   };
   const switchScope = (scope: "strong" | "intersection") => {
     activeScope = scope;
@@ -564,7 +633,7 @@
     <div class="tab-toolbar attributes-toolbar">
       <div class="attributes-toolbar__copy">
         <p class="label">Atributos</p>
-        <p class="muted">{activeScope === "strong" ? "Recorre la entidad activa, reordena atributos y mantén visible su mapa relacional." : "Administra atributos de las entidades de intersección sin definir PK manualmente."}</p>
+        <p class="muted">{activeScope === "strong" ? "Gestión de atributos y relaciones." : "Administra atributos de intersección."}</p>
       </div>
       <div class="attributes-toolbar__meta">
         <div class="scope-switch" role="tablist" aria-label="Tipo de atributos">
@@ -646,21 +715,25 @@
         </div>
       </div>
     </div>
-    {#if activeScope === "strong" && relationSummary.length}
+    {#if relationSummary.length}
       <div class="attributes-toolbar__relations">
         <div class="relation-bar">
           <div class="relation-bar__picker">
-            <span class="banner-title">Relaciones</span>
-            <select
-              id="attribute-relation-type"
-              class="entity-select relation-type-select"
-              value={activeRelationGroup?.type ?? ""}
-              on:change={handleRelationTypeChange}
-            >
-              {#each relationSummary as group}
-                <option value={group.type}>{group.type}</option>
-              {/each}
-            </select>
+            <span class="banner-title">{activeScope === "strong" ? "Relaciones" : "Origen"}</span>
+            {#if activeScope === "strong"}
+              <select
+                id="attribute-relation-type"
+                class="entity-select relation-type-select"
+                value={activeRelationGroup?.type ?? ""}
+                on:change={handleRelationTypeChange}
+              >
+                {#each relationSummary as group}
+                  <option value={group.type}>{group.type}</option>
+                {/each}
+              </select>
+            {:else}
+              <span class="banner-subtitle">Tablas relacionadas</span>
+            {/if}
           </div>
           {#if activeRelationGroup}
             <div class="relation-bar__tags" aria-label="Relaciones de la entidad activa">
@@ -672,7 +745,7 @@
             <div class="relation-bar__empty">Sin relaciones visibles.</div>
           {/if}
         </div>
-        {#if relationSummary.length > 1}
+        {#if activeScope === "strong" && relationSummary.length > 1}
           <div class="relation-type-summary">
             {#each relationSummary as group}
               <span class="relation-type-summary__item">{group.type}</span>
@@ -743,8 +816,8 @@
                 <th>Nombre</th>
                 <th>Descripción</th>
                 <th style="width: 120px;">Tipo</th>
-                <th style="width: 72px;">Clave</th>
-                <th style="width: 180px;">Acciones</th>
+                <th style="width: 80px;">Mandatorio</th>
+                <th style="width: 120px;">Acciones</th>
               </tr>
               </thead>
               <tbody class="draggable-body">
@@ -763,8 +836,18 @@
                       {/if}
                     </td>
                     <td class="muted">{inherited.type || "—"}</td>
-                    <td><span class="badge badge--fk">FK (H)</span></td>
-                    <td class="muted">Lectura</td>
+                    <td>
+                      {#if inherited.isOptional}
+                        <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
+                      {:else}
+                        <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
+                      {/if}
+                    </td>
+                    <td class="muted">
+                      <div class="row-actions" style="justify-content: flex-start; gap: 8px;">
+                        Lectura
+                      </div>
+                    </td>
                   </tr>
                 {/each}
               {/if}
@@ -796,10 +879,10 @@
                     <td>{attribute.Description}</td>
                     <td>{attribute.Type || "Por definir"}</td>
                     <td>
-                      {#if attribute.KeyType === "pk"}
-                        <span class="badge badge--pk">PK</span>
+                      {#if attribute.Optional}
+                        <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
                       {:else}
-                        {attributeKeyLabel(attribute)}
+                        <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
                       {/if}
                     </td>
                     <td>
@@ -841,8 +924,18 @@
                           {/if}
                         </td>
                         <td class="muted">{inherited.type || "—"}</td>
-                        <td><span class="badge badge--fk">FK (H)</span></td>
-                        <td class="muted">Lectura</td>
+                        <td>
+                          {#if inherited.isOptional}
+                            <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
+                          {:else}
+                            <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
+                          {/if}
+                        </td>
+                        <td class="muted">
+                          <div class="row-actions" style="justify-content: flex-start; gap: 8px;">
+                            Lectura
+                          </div>
+                        </td>
                       </tr>
                     {/each}
                   {/if}
@@ -893,8 +986,8 @@
                 <th>Nombre</th>
                 <th>Descripción</th>
                 <th style="width: 120px;">Tipo</th>
-                <th style="width: 72px;">Clave</th>
-                <th style="width: 180px;">Acciones</th>
+                <th style="width: 80px;">Mandatorio</th>
+                <th style="width: 120px;">Acciones</th>
               </tr>
               </thead>
               <tbody class="draggable-body">
@@ -912,8 +1005,18 @@
                     {/if}
                   </td>
                   <td class="muted">{inherited.type || "—"}</td>
-                  <td><span class="badge badge--pk">PK (H)</span></td>
-                  <td class="muted">Lectura</td>
+                  <td>
+                    {#if inherited.isOptional}
+                      <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
+                    {:else}
+                      <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
+                    {/if}
+                  </td>
+                  <td class="muted">
+                    <div class="row-actions" style="justify-content: flex-start; gap: 8px;">
+                      Lectura
+                    </div>
+                  </td>
                 </tr>
               {/each}
 
@@ -939,7 +1042,13 @@
                     <td>{attribute.Name}</td>
                     <td>{attribute.Description}</td>
                     <td>{attribute.Type || "Por definir"}</td>
-                    <td></td>
+                    <td>
+                      {#if attribute.Optional}
+                        <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
+                      {:else}
+                        <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
+                      {/if}
+                    </td>
                     <td>
                       <div class="row-actions">
                         <AttributeForm
@@ -1233,34 +1342,38 @@
     font-weight: 600;
   }
 
-  .entities-table th,
-  .entities-table td {
-    text-align: left;
-    padding: 12px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-    font-size: 14px;
-  }
-
-  .entities-table thead th {
-    font-size: 13px;
-    color: #9ab5e4;
-    letter-spacing: 0.3px;
+  :global(.badge--optional) {
+    background: #64748b;
+    color: #f1f5f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
     text-transform: uppercase;
   }
 
-  .table-wrapper.frosted {
-    background: linear-gradient(135deg, rgba(20, 32, 46, 0.7), rgba(20, 32, 46, 0.9));
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 8px;
+  :global(.badge--mandatory) {
+    background: #f59e0b;
+    color: #451a03;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
   }
 
-  .entities-table tbody tr:nth-child(odd):not(.empty-row) {
-    background: rgba(255, 255, 255, 0.025);
+
+  .entities-table th,
+  .entities-table td {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.82rem;
   }
 
+  .entities-table tbody tr:nth-child(odd):not(.empty-row),
   .entities-table tbody tr:nth-child(even):not(.empty-row) {
-    background: rgba(109, 216, 255, 0.045);
+    background: transparent;
   }
 
   .draggable-body tr {
@@ -1420,9 +1533,6 @@
     box-shadow: var(--focus-ring);
   }
 
-  .entities-table {
-    color: var(--ink);
-  }
 
   .pill {
     background: var(--chip-surface);
@@ -1431,18 +1541,51 @@
   }
 
   .table-wrapper.frosted {
-    background: var(--panel-surface-strong);
-    border-color: var(--border);
-    border-radius: calc(var(--radius-md) - 4px);
-    box-shadow: var(--surface-highlight);
+    background: var(--surface-strong);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    max-height: calc(100vh - var(--attributes-sticky-total-height, 0px) - 8rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .entities-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--ink);
   }
 
   .entities-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--surface-strong);
     color: var(--ink-faint);
-    border-bottom-color: var(--line-soft);
-    font-size: 0.76rem;
-    letter-spacing: 0.14em;
+    border-bottom: 2px solid var(--border);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
+    text-align: left;
+    padding: 0.75rem 1rem;
+    box-shadow: inset 0 -1px 0 var(--line-soft);
+  }
+
+  .entities-table thead th:first-child {
+    border-top-left-radius: var(--radius-sm);
+  }
+
+  .entities-table thead th:last-child {
+    border-top-right-radius: var(--radius-sm);
+  }
+
+  .entities-table tbody tr:last-child td:first-child {
+    border-bottom-left-radius: var(--radius-sm);
+  }
+
+  .entities-table tbody tr:last-child td:last-child {
+    border-bottom-right-radius: var(--radius-sm);
   }
 
   .entities-table tbody tr:nth-child(odd):not(.empty-row),
@@ -1472,7 +1615,14 @@
   .attributes-sticky-stack--pinned {
     position: sticky;
     top: 0;
-    z-index: calc(var(--layer-ribbon) - 2);
+    z-index: calc(var(--layer-ribbon, 100) - 2);
+    background: var(--surface-strong);
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
   }
 
   .attributes-sticky-sentinel {

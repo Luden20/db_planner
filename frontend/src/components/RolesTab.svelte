@@ -658,11 +658,10 @@
         <section class="permission-panel">
           <div class="permission-panel__head">
             <div>
-              <p class="section-kicker">Matriz de tablas</p>
               <h3>Acceso por entidad</h3>
-              <p>Activa permisos puntuales por tabla. La fila se limpia sola cuando todos los checks quedan apagados.</p>
+              <p>Permisos por tabla.</p>
             </div>
-            <span class="permission-panel__hint">Toggle directo con guardado inmediato</span>
+            <span class="permission-panel__hint">Auto-guardado</span>
           </div>
 
           {#if entities.length}
@@ -744,7 +743,8 @@
   .roles-sticky-stack--pinned {
     position: sticky;
     top: 0;
-    z-index: calc(var(--layer-ribbon) - 2);
+    z-index: calc(var(--layer-ribbon, 100) - 2);
+    background: var(--surface-strong);
   }
 
   .roles-sticky-sentinel {
@@ -830,7 +830,7 @@
 
   .roles-rail {
     position: sticky;
-    top: calc(var(--roles-sticky-total-height) + 1rem);
+    top: calc(var(--roles-sticky-total-height, 0px) + 1rem);
     align-self: start;
     display: grid;
     gap: 0.95rem;
@@ -1050,9 +1050,11 @@
 
   .permission-matrix-wrap {
     overflow: auto;
-    border-radius: calc(var(--radius-lg) - 12px);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
+    background: var(--panel-surface-strong);
+    max-height: calc(100vh - var(--roles-sticky-total-height, 0px) - 20rem);
+    scrollbar-gutter: stable;
   }
 
   .permission-matrix {
@@ -1064,21 +1066,39 @@
   .permission-matrix th,
   .permission-matrix td {
     padding: 0.92rem 0.88rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--ink) 9%, transparent);
+    border-bottom: 1px solid var(--line-soft);
     vertical-align: middle;
   }
 
   .permission-matrix th {
     position: sticky;
     top: 0;
-    z-index: 1;
-    background: color-mix(in srgb, var(--surface-strong) 98%, transparent);
-    color: var(--ink-soft);
-    font-size: 0.78rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+    z-index: 10;
+    background: var(--surface-strong);
+    color: var(--ink-faint);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     text-align: center;
+    border-bottom: 2px solid var(--border);
+    box-shadow: inset 0 -1px 0 var(--line-soft);
+  }
+
+  .permission-matrix th:first-child {
+    border-top-left-radius: var(--radius-sm);
+  }
+
+  .permission-matrix th:last-child {
+    border-top-right-radius: var(--radius-sm);
+  }
+
+  .permission-matrix tbody tr:last-child td:first-child {
+    border-bottom-left-radius: var(--radius-sm);
+  }
+
+  .permission-matrix tbody tr:last-child td:last-child {
+    border-bottom-right-radius: var(--radius-sm);
   }
 
   .permission-matrix th:first-child,

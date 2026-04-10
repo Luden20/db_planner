@@ -1,7 +1,14 @@
 <script lang="ts">
   import {onMount, tick} from "svelte";
   import type {utils} from "../../wailsjs/go/models";
-  import {AddRelation, GetCombinatory, MarkEntityStatus, RemoveRelation} from "../../wailsjs/go/main/App";
+  import {
+    AddRelation,
+    GetCombinatory,
+    GetRelationTypes,
+    IntersectionHasAttributes,
+    MarkEntityStatus,
+    RemoveRelation
+  } from "../../wailsjs/go/main/App";
   import ButtonIcon from "./ButtonIcon.svelte";
   import EntityFocusCard from "./EntityFocusCard.svelte";
   import CreateEntity from "./forms/CreateEntity.svelte";
@@ -39,7 +46,8 @@
   let stickyStackPinned = false;
   let currentRelationCount = 0;
   let approvedRelationCount = 0;
-  const relationOptions = ["", "1:1", "N:1", "1:N", "N:N"];
+  let relationOptions: string[] = [];
+  let loadingOptions = true;
   let updating = false;
   let relationOverrides: Record<string, string> = {};
   let relationMenu: {
@@ -124,7 +132,16 @@
     stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
   };
 
-  onMount(() => {
+  onMount(async () => {
+    try {
+      const types = await GetRelationTypes();
+      relationOptions = types || ["", "1:1", "N:1", "1:N", "N:N"];
+    } catch (err) {
+      console.error("Error al cargar tipos de relación:", err);
+      relationOptions = ["", "1:1", "N:1", "1:N", "N:N"];
+    } finally {
+      loadingOptions = false;
+    }
     load();
     syncStickyStackHeight();
     syncStickyState();
@@ -319,6 +336,28 @@
     relationOverrides[key] = selection; // Guardamos incluso vacío para respetar la selección
     applyOverrides(); // Optimista: refleja en UI mientras persiste
 
+    // Advertencia si se intenta cambiar una relación N:N que ya tiene atributos reales
+    if (ids.relationId != null) {
+      const prevRelation = comb[activeIndex]?.Relations.find(r => r.Id === ids.relationId)?.Relation;
+      if (prevRelation === "N:N" && selection !== "N:N") {
+        try {
+          const hasAttrs = await IntersectionHasAttributes(ids.relationId);
+          if (hasAttrs) {
+            const confirm = window.confirm(
+              "Esta intersección ya tiene datos (atributos reales). ¿Estás seguro de que quieres cambiar o eliminar la relación? Los atributos de la intersección se perderán."
+            );
+            if (!confirm) {
+              // Revertir cambio en UI
+              await load(true);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error("Error al verificar atributos de intersección:", e);
+        }
+      }
+    }
+
     updating = true;
     try {
       if (!selection) {
@@ -445,9 +484,9 @@
           <div class="slide-panel__head">
             <div>
               <p class="label">Matriz activa</p>
-              <p class="muted">Cada fila representa una entidad relacionada. El selector aplica el tipo de cardinalidad.</p>
+              <p class="muted">Configura cardinalidades.</p>
             </div>
-            <span class="slide-panel__hint">Edicion directa</span>
+            <span class="slide-panel__hint">Auto-guardado</span>
           </div>
           <div class="table-wrapper">
             <table class="entities-table compact">
@@ -898,8 +937,51 @@
   }
 
   .table-wrapper {
-    background: color-mix(in srgb, var(--surface-strong) 68%, transparent);
-    border-color: transparent;
+    background: var(--panel-surface-strong);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    max-height: calc(100vh - var(--relations-sticky-total-height, 0px) - 20rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    box-shadow: var(--surface-highlight);
+  }
+
+  .entities-table {
+    color: var(--ink);
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  .entities-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--surface-strong);
+    color: var(--ink-faint);
+    border-bottom: 2px solid var(--border);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 0.75rem 1rem;
+    box-shadow: inset 0 -1px 0 var(--line-soft);
+  }
+
+  .entities-table thead th:first-child {
+    border-top-left-radius: var(--radius-sm);
+  }
+
+  .entities-table thead th:last-child {
+    border-top-right-radius: var(--radius-sm);
+  }
+
+  .entities-table tbody tr:last-child td:first-child {
+    border-bottom-left-radius: var(--radius-sm);
+  }
+
+  .entities-table tbody tr:last-child td:last-child {
+    border-bottom-right-radius: var(--radius-sm);
   }
 
   .entities-table tbody tr:nth-child(odd),
