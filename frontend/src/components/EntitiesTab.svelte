@@ -10,7 +10,7 @@
 
   export let onSave: () => Promise<void> = async () => {};
   export let project: utils.DbProject;
-  export let onJumpTo: (tab: "relations" | "tertiary", entityId: number) => void = () => {};
+  export let onJumpTo: (tab: "entities" | "relations" | "tertiary", entityId: number) => void = () => {};
 
   let createEntityModal: CreateEntity | null = null;
   let tableWrapper: HTMLDivElement | null = null;
@@ -263,7 +263,7 @@
     await createEntityModal?.openForInsert(referenceId, placement);
   };
 
-  const handleJumpFromContext = (tab: "relations" | "tertiary") => {
+  const handleJumpFromContext = (tab: "entities" | "relations" | "tertiary") => {
     if (contextMenu.entityId === null) {
       return;
     }

@@ -58,7 +58,13 @@ export function EjectProject():Promise<void>;
 
 export function ExportCombinationsToExcel(arg1:string):Promise<void>;
 
+export function ExportEntitiesToJSON(arg1:Array<number>,arg2:Array<number>):Promise<string>;
+
 export function ExportToExcel(arg1:string):Promise<void>;
+
+export function GenerateSQLFromEntities(arg1:Array<number>,arg2:Array<number>,arg3:string):Promise<utils.SQLGenerationResult>;
+
+export function GetAISettings():Promise<utils.AISettings>;
 
 export function GetActualProject():Promise<utils.DbProject>;
 
@@ -115,3 +121,5 @@ export function RemoveRoleTablePermission(arg1:number,arg2:number):Promise<void>
 export function RemoveStep(arg1:number,arg2:number,arg3:number):Promise<void>;
 
 export function Save():Promise<void>;
+
+export function SaveOpenAIAPIKey(arg1:string):Promise<utils.AISettings>;

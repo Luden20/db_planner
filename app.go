@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"db_planner/utils"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -300,6 +305,170 @@ func (a *App) GetRelationTypes() []string {
 	return utils.GetAllowedRelationTypes()
 }
 
+type schemaExportData struct {
+	Entities             []utils.Entity             `json:"entities"`
+	IntersectionEntities []utils.IntersectionEntity `json:"intersection_entities"`
+	Relations            []utils.Relation           `json:"relations"`
+}
+
+type openAIResponsesRequest struct {
+	Model string `json:"model"`
+	Input string `json:"input"`
+}
+
+type openAIResponsesResponse struct {
+	OutputText string `json:"output_text"`
+	Output     []struct {
+		Type    string `json:"type"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"output"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
+func (a *App) ExportEntitiesToJSON(entityIds []int, intersectionIds []int) (string, error) {
+	project, err := a.GetActualProject()
+	if err != nil {
+		return "", err
+	}
+
+	exportData, err := buildSchemaExport(project, entityIds, intersectionIds)
+	if err != nil {
+		return "", err
+	}
+
+	jsonData, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonData), nil
+}
+
+func (a *App) GetAISettings() (*utils.AISettings, error) {
+	return utils.GetAISettings()
+}
+
+func (a *App) SaveOpenAIAPIKey(apiKey string) (*utils.AISettings, error) {
+	return utils.SaveOpenAIAPIKey(apiKey)
+}
+
+func (a *App) GenerateSQLFromEntities(entityIds []int, intersectionIds []int, database string) (*utils.SQLGenerationResult, error) {
+	targetDatabase := strings.TrimSpace(database)
+	if targetDatabase == "" {
+		return nil, fmt.Errorf("selecciona una base de datos destino")
+	}
+
+	settings, err := utils.LoadAppConfig()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(settings.OpenAIAPIKey) == "" {
+		return nil, fmt.Errorf("configura una API key de OpenAI antes de generar SQL")
+	}
+
+	project, err := a.GetActualProject()
+	if err != nil {
+		return nil, err
+	}
+
+	exportData, err := buildSchemaExport(project, entityIds, intersectionIds)
+	if err != nil {
+		return nil, err
+	}
+
+	exportJSONBytes, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	exportJSON := string(exportJSONBytes)
+
+	sqlCode, err := generateSQLWithOpenAI(exportJSON, targetDatabase, settings.OpenAIModel, settings.OpenAIAPIKey)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(sqlCode) == "" {
+		return nil, fmt.Errorf("la IA no devolvió código SQL")
+	}
+
+	return &utils.SQLGenerationResult{
+		Database:   targetDatabase,
+		Model:      settings.OpenAIModel,
+		SQL:        strings.TrimSpace(sqlCode),
+		ExportJSON: exportJSON,
+	}, nil
+}
+
+func buildSchemaExport(project *utils.DbProject, entityIds []int, intersectionIds []int) (*schemaExportData, error) {
+	if project == nil {
+		return nil, fmt.Errorf("proyecto no cargado")
+	}
+
+	selectedEntities := make([]utils.Entity, 0)
+	entityIdMap := make(map[int]bool)
+	for _, id := range entityIds {
+		entityIdMap[id] = true
+	}
+
+	for _, entity := range project.Entities {
+		if entityIdMap[entity.Id] {
+			selectedEntities = append(selectedEntities, entity)
+		}
+	}
+
+	selectedIntersections := make([]utils.IntersectionEntity, 0)
+	intersectionIdMap := make(map[int]bool)
+	for _, id := range intersectionIds {
+		intersectionIdMap[id] = true
+	}
+
+	for _, intersection := range project.IntersectionEntities {
+		// Incluir si está explícitamente seleccionada O si sus padres están seleccionados
+		include := false
+		if intersectionIdMap[intersection.Entity.Id] {
+			include = true
+		} else {
+			// Encontrar la relación para saber los padres
+			var rel *utils.Relation
+			for _, r := range project.Relations {
+				if r.Id == intersection.RelationID {
+					rel = &r
+					break
+				}
+			}
+			if rel != nil && entityIdMap[rel.IdEntity1] && entityIdMap[rel.IdEntity2] {
+				include = true
+			}
+		}
+
+		if include {
+			selectedIntersections = append(selectedIntersections, intersection)
+		}
+	}
+
+	// También incluir las relaciones entre las entidades seleccionadas (fuertes o intersecciones vía sus padres)
+	selectedRelations := make([]utils.Relation, 0)
+	for _, rel := range project.Relations {
+		if entityIdMap[rel.IdEntity1] && entityIdMap[rel.IdEntity2] {
+			selectedRelations = append(selectedRelations, rel)
+		}
+	}
+
+	if len(selectedEntities) == 0 && len(selectedIntersections) == 0 {
+		return nil, fmt.Errorf("selecciona al menos una tabla para exportar")
+	}
+
+	return &schemaExportData{
+		Entities:             selectedEntities,
+		IntersectionEntities: selectedIntersections,
+		Relations:            selectedRelations,
+	}, nil
+}
+
 func (a *App) PickProjectJSON() (string, error) {
 	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Selecciona proyecto.json",
@@ -351,6 +520,90 @@ func (a *App) MoveEntity(id int, direction string) error {
 		return err
 	}
 	return nil
+}
+
+func generateSQLWithOpenAI(exportJSON string, database string, model string, apiKey string) (string, error) {
+	prompt := fmt.Sprintf(`Genera el script SQL DDL para %s a partir del siguiente esquema JSON.
+
+Reglas:
+- Responde solo con SQL valido.
+- No uses bloques markdown.
+- Crea tablas, claves primarias, claves foraneas, tipos y restricciones razonables segun el modelo.
+- Respeta las entidades de interseccion y sus relaciones.
+- Si alguna definicion esta incompleta, elige un tipo SQL conservador y consistente.
+- Usa nombres limpios y listos para ejecutar.
+
+Esquema JSON:
+%s`, database, exportJSON)
+
+	requestBody := openAIResponsesRequest{
+		Model: model,
+		Input: prompt,
+	}
+
+	payload, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 90 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode >= 400 {
+		var failure openAIResponsesResponse
+		if err := json.Unmarshal(body, &failure); err == nil && failure.Error != nil && failure.Error.Message != "" {
+			return "", fmt.Errorf("openai devolvió un error: %s", failure.Error.Message)
+		}
+		return "", fmt.Errorf("openai devolvió un error HTTP %d", resp.StatusCode)
+	}
+
+	var response openAIResponsesResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", err
+	}
+
+	outputText := extractOpenAIText(response)
+	if strings.TrimSpace(outputText) == "" {
+		return "", fmt.Errorf("openai no devolvió texto utilizable")
+	}
+
+	return outputText, nil
+}
+
+func extractOpenAIText(response openAIResponsesResponse) string {
+	if strings.TrimSpace(response.OutputText) != "" {
+		return strings.TrimSpace(response.OutputText)
+	}
+
+	parts := make([]string, 0)
+	for _, item := range response.Output {
+		for _, content := range item.Content {
+			switch content.Type {
+			case "output_text", "text", "summary_text", "reasoning_text":
+				if strings.TrimSpace(content.Text) != "" {
+					parts = append(parts, strings.TrimSpace(content.Text))
+				}
+			}
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
 func (a *App) AddBigProcess(name string, description string) error {

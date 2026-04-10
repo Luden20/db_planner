@@ -35,7 +35,7 @@
   export let entities: utils.Entity[] = [];
   export let onRefresh: () => Promise<void> = async () => {};
   export let focusEntityId: number | null = null;
-  export let onJumpTo: (tab: "entities" | "relations" | "tertiary", entityId?: number | null) => void = () => {};
+  export let onJumpTo: (tab: "entities" | "relations" | "tertiary", entityId: number | null) => void = () => {};
   let comb: CombView[] = [];
   let activeIndex = 0;
   let lastSyncedFocusId: number | null = null;
@@ -224,7 +224,7 @@
     lastSyncedFocusId = focusEntityId;
   };
 
-  const jumpToTab = (tab: "entities" | "tertiary") => {
+  const jumpToTab = (tab: "entities" | "relations" | "tertiary") => {
     const entityId = comb[activeIndex]?.IdPrincipalEntity ?? null;
     onJumpTo(tab, entityId);
   };

@@ -1,5 +1,19 @@
 export namespace utils {
 	
+	export class AISettings {
+	    HasAPIKey: boolean;
+	    OpenAIModel: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AISettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.HasAPIKey = source["HasAPIKey"];
+	        this.OpenAIModel = source["OpenAIModel"];
+	    }
+	}
 	export class Attribute {
 	    Id: number;
 	    Name: string;
@@ -436,6 +450,24 @@ export namespace utils {
 	
 	
 	
+	export class SQLGenerationResult {
+	    Database: string;
+	    Model: string;
+	    SQL: string;
+	    ExportJSON: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SQLGenerationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Database = source["Database"];
+	        this.Model = source["Model"];
+	        this.SQL = source["SQL"];
+	        this.ExportJSON = source["ExportJSON"];
+	    }
+	}
 	
 
 }

@@ -10,6 +10,7 @@
   export let onSave: () => Promise<void> = async () => {};
   export let onExport: () => void = () => {};
   export let onExportWithoutRelations: () => void = () => {};
+  export let onExportAI: () => void = () => {};
   export let onExit: () => void = () => {};
   let exportMenuOpen = false;
   let exportMenuEl: HTMLDivElement | null = null;
@@ -31,10 +32,14 @@
     exportMenuOpen = false;
   };
 
-  const handleExportAction = (mode: "full" | "plain") => {
+  const handleExportAction = (mode: "full" | "plain" | "ai") => {
     closeExportMenu();
     if (mode === "full") {
       onExport();
+      return;
+    }
+    if (mode === "ai") {
+      onExportAI();
       return;
     }
     onExportWithoutRelations();
@@ -118,6 +123,10 @@
                 <button class="export-option" type="button" role="menuitem" on:click={() => handleExportAction("plain")}>
                   <strong>Sin relaciones</strong>
                   <span>Combinaciones</span>
+                </button>
+                <button class="export-option export-option--ai" type="button" role="menuitem" on:click={() => handleExportAction("ai")}>
+                  <strong>@ SQL con IA</strong>
+                  <span>Seleccion de tablas + OpenAI</span>
                 </button>
               </div>
             {/if}
@@ -368,6 +377,11 @@
   .export-option:hover {
     background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
     transform: translateY(-1px);
+  }
+
+  .export-option--ai {
+    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong));
   }
 
   .ribbon-group--views {

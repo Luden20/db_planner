@@ -22,6 +22,7 @@
   import AttributesTab from "./components/AttributesTab.svelte";
   import FlowsTab from "./components/FlowsTab.svelte";
   import RolesTab from "./components/RolesTab.svelte";
+  import ExportAISQL from "./components/forms/ExportAISQL.svelte";
   import {showToast, toastState} from "./lib/toast";
 
   type TabKey = 'entities' | 'relations' | 'roles' | 'flows' | 'tertiary';
@@ -33,6 +34,7 @@
   let themeMode: ThemeMode = "light";
   let focusEntityId: number | null = null;
   let ribbonHeight = 0;
+  let exportAISQLModal: ExportAISQL | null = null;
   let showExitDialog = false;
   let exitInProgress = false;
   let showCreateDialog = false;
@@ -140,6 +142,9 @@
       const message = e?.error ?? e?.message ?? e;
       showToast(`Error al exportar sin relaciones: ${message}`, "error");
     }
+  };
+  const handleExportAI = () => {
+    exportAISQLModal?.openDialog();
   };
   const handleRefresh = async () => {
     try {
@@ -261,12 +266,14 @@
         onSave={handleSave}
         onExport={handleExport}
         onExportWithoutRelations={handleExportWithoutRelations}
+        onExportAI={handleExportAI}
         onExit={handleExitRequest}
       />
     </div>
   {/if}
 
   {#if data != null}
+    <ExportAISQL bind:this={exportAISQLModal} entities={data.Entities} intersectionEntities={data.IntersectionEntities}/>
     <section
       class="tab-panel tab-panel--workspace"
       style={`--workspace-ribbon-offset: ${Math.max(ribbonHeight + 18, 18)}px;`}

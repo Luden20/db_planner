@@ -610,8 +610,15 @@
     }
   };
 
-  const jumpToTab = (tab: "entities" | "relations") => {
+  const jumpToTab = (tab: "entities" | "relations" | "tertiary") => {
     onJumpTo(tab, activeScope === "strong" ? selectedId : null);
+  };
+
+  const jumpToEntity = (entityName: string) => {
+    const target = entities.find(e => e.Name === entityName);
+    if (target) {
+      onJumpTo("tertiary", target.Id);
+    }
   };
 
   const handleRelationTypeChange = (event: Event) => {
@@ -738,7 +745,10 @@
           {#if activeRelationGroup}
             <div class="relation-bar__tags" aria-label="Relaciones de la entidad activa">
               {#each activeRelationGroup.items as item}
-                <span class="pill relation-pill" title={`${activeRelationGroup.type} ${item}`}>{item}</span>
+                <div class="pill relation-pill" title={`${activeRelationGroup.type} ${item}`}>
+                  <span class="pill-text">{item}</span>
+
+                </div>
               {/each}
             </div>
           {:else}
@@ -827,6 +837,13 @@
                     <td class="inherited-name">
                       <span class="inherited-tag">FK heredada</span>
                       {inherited.attributeName || `PK de ${inherited.entityName} pendiente por definir`}
+                      <button 
+                        class="control control--icon control--xs jump-btn" 
+                        on:click={() => jumpToEntity(inherited.entityName)}
+                        title={`Ir a ${inherited.entityName}`}
+                      >
+                        <ButtonIcon name="jump"/>
+                      </button>
                     </td>
                     <td>
                       {#if inherited.attributeName}
@@ -915,6 +932,13 @@
                         <td class="inherited-name">
                           <span class="inherited-tag">FK heredada</span>
                           {inherited.attributeName || `PK de ${inherited.entityName} pendiente por definir`}
+                          <button 
+                            class="control control--icon control--xs jump-btn" 
+                            on:click={() => jumpToEntity(inherited.entityName)}
+                            title={`Ir a ${inherited.entityName}`}
+                          >
+                            <ButtonIcon name="jump"/>
+                          </button>
                         </td>
                         <td>
                           {#if inherited.attributeName}
@@ -1156,9 +1180,8 @@
   }
 
   .banner-title {
-    margin: 0;
-    font-size: 0.74rem;
-    letter-spacing: 0.16em;
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
     color: var(--accent);
     text-transform: uppercase;
     font-weight: 800;
@@ -1182,8 +1205,8 @@
 
   .attributes-toolbar__relations {
     display: grid;
-    gap: 0.65rem;
-    padding: 0.95rem 1.1rem 1rem;
+    gap: 0.4rem;
+    padding: 0.62rem 0.8rem 0.72rem;
     border: 1px solid var(--border);
     border-radius: calc(var(--radius-md) - 4px);
     background:
@@ -1195,33 +1218,38 @@
   .relation-bar {
     display: flex;
     align-items: flex-start;
-    gap: 0.85rem;
-    padding: 0.72rem 0.82rem;
-    border-radius: 1rem;
+    gap: 0.55rem;
+    padding: 0.4rem 0.55rem;
+    border-radius: 0.72rem;
     border: 1px solid var(--line-soft);
     background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
   }
 
   .relation-bar__picker {
-    display: grid;
-    gap: 0.38rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     min-width: 0;
     flex: 0 0 auto;
-    align-self: flex-start;
+    align-self: center;
   }
 
   .relation-bar__tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.35rem;
     min-width: 0;
     flex: 1 1 auto;
+    align-self: center;
   }
 
   .relation-type-select {
-    min-width: 5.5rem;
-    width: 5.5rem;
-    padding-right: 2.4rem;
+    min-width: 4.9rem;
+    width: 4.9rem;
+    min-height: 2rem;
+    padding: 0.42rem 2rem 0.42rem 0.68rem;
+    padding-right: 2rem;
+    font-size: 0.72rem;
   }
 
   .relation-type-select:focus {
@@ -1231,22 +1259,23 @@
   .relation-bar__empty {
     display: inline-flex;
     align-items: center;
-    min-height: 2.5rem;
+    min-height: 2rem;
     color: var(--ink-faint);
-    font-size: 0.82rem;
+    font-size: 0.74rem;
   }
 
   .pill {
     display: inline-flex;
     align-items: center;
-    max-width: 220px;
-    padding: 6px 10px;
+    max-width: 180px;
+    min-height: 1.6rem;
+    padding: 3px 8px;
     border-radius: 999px;
     background: rgba(90, 209, 255, 0.1);
     color: #d9e4f5;
     border: 1px solid rgba(90, 209, 255, 0.16);
-    font-size: 13px;
-    line-height: 1.35;
+    font-size: 0.72rem;
+    line-height: 1.15;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1255,41 +1284,38 @@
   .relation-pill {
     max-width: none;
     background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
-  }
-
-  .relation-type-summary {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem;
-  }
-
-  .relation-type-summary__item {
+    gap: 0.28rem;
+    padding: 2px 4px 2px 8px;
+    border-color: color-mix(in srgb, var(--accent) 12%, var(--border));
     color: var(--ink-faint);
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-  .entities-table {
-    width: 100%;
-    border-collapse: collapse;
-    color: #e8edf7;
   }
 
-  .inherited-pk-row {
-    background-color: rgba(59, 130, 246, 0.05);
-    border-left: 3px solid rgba(59, 130, 246, 0.5);
+  .pill-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .pk-row {
-    background-color: rgba(16, 185, 129, 0.05);
-    border-left: 3px solid rgba(16, 185, 129, 0.5);
+  .jump-btn, .jump-btn-inline {
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity 0.2s, transform 0.2s;
+    background: transparent;
+    border: none;
+    padding: 1px;
+    cursor: pointer;
   }
 
-  .inherited-pk-row.intersection-pk {
-    background-color: rgba(139, 92, 246, 0.05);
-    border-left-color: rgba(139, 92, 246, 0.5);
+  .jump-btn:hover, .jump-btn-inline:hover {
+    opacity: 1;
+    transform: scale(1.1);
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .inherited-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-weight: 500;
   }
 

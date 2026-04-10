@@ -114,8 +114,20 @@ export function ExportCombinationsToExcel(arg1) {
   return window['go']['main']['App']['ExportCombinationsToExcel'](arg1);
 }
 
+export function ExportEntitiesToJSON(arg1, arg2) {
+  return window['go']['main']['App']['ExportEntitiesToJSON'](arg1, arg2);
+}
+
 export function ExportToExcel(arg1) {
   return window['go']['main']['App']['ExportToExcel'](arg1);
+}
+
+export function GenerateSQLFromEntities(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GenerateSQLFromEntities'](arg1, arg2, arg3);
+}
+
+export function GetAISettings() {
+  return window['go']['main']['App']['GetAISettings']();
 }
 
 export function GetActualProject() {
@@ -228,4 +240,8 @@ export function RemoveStep(arg1, arg2, arg3) {
 
 export function Save() {
   return window['go']['main']['App']['Save']();
+}
+
+export function SaveOpenAIAPIKey(arg1) {
+  return window['go']['main']['App']['SaveOpenAIAPIKey'](arg1);
 }
