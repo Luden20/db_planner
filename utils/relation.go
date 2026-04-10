@@ -3,17 +3,21 @@ package utils
 import "fmt"
 
 const (
-	RelationType11 = "1:1"
-	RelationType1N = "1:N"
-	RelationTypeN1 = "N:1"
-	RelationTypeNN = "N:N"
+	RelationType11  = "1:1"
+	RelationType1N  = "1:N"
+	RelationTypeN1  = "N:1"
+	RelationTypeNN  = "N:N"
+	RelationType1Np = "1:Np"
+	RelationTypeNp1 = "Np:1"
 )
 
 var allowedRelationValues = map[string]struct{}{
-	RelationType11: {},
-	RelationType1N: {},
-	RelationTypeN1: {},
-	RelationTypeNN: {},
+	RelationType11:  {},
+	RelationType1N:  {},
+	RelationTypeN1:  {},
+	RelationTypeNN:  {},
+	RelationType1Np: {},
+	RelationTypeNp1: {},
 }
 
 func GetAllowedRelationTypes() []string {
@@ -23,6 +27,8 @@ func GetAllowedRelationTypes() []string {
 		RelationType1N,
 		RelationTypeN1,
 		RelationTypeNN,
+		RelationType1Np,
+		RelationTypeNp1,
 	}
 }
 
@@ -71,12 +77,18 @@ func canonicalPair(id1 int, id2 int) (int, int, bool) {
 
 func invertRelationValue(rel string) string {
 	switch rel {
-	case "1:1":
-		return "1:1"
-	case "1:N":
-		return "N:1"
-	case "N:1":
-		return "1:N"
+	case RelationType11:
+		return RelationType11
+	case RelationType1N:
+		return RelationTypeN1
+	case RelationTypeN1:
+		return RelationType1N
+	case RelationTypeNN:
+		return RelationTypeNN
+	case RelationType1Np:
+		return RelationTypeNp1
+	case RelationTypeNp1:
+		return RelationType1Np
 	default:
 		return rel
 	}
@@ -103,7 +115,7 @@ func (p *DbProject) syncIntersectionEntitiesFromRelations() {
 	}
 	validRelationIDs := make(map[int]struct{}, len(p.Relations))
 	for _, relation := range p.Relations {
-		if relation.Relation == "N:N" {
+		if relation.Relation == RelationTypeNN {
 			validRelationIDs[relation.Id] = struct{}{}
 		}
 	}
