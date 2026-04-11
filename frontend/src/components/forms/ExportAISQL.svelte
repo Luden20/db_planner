@@ -10,6 +10,7 @@
   export let intersectionEntities: utils.IntersectionEntity[] = [];
 
   type ViewState = "select" | "loading" | "result" | "error";
+  type ResultView = "generated" | "ai";
   type DatabaseOption = {
     value: string;
     label: string;
@@ -30,8 +31,8 @@
 
   const pipelineStages: PipelineStage[] = [
     {id: "schema", title: "Empaquetando esquema", detail: "Consolidando tablas, cruces y relaciones visibles."},
-    {id: "request", title: "Consultando modelo", detail: "Enviando el subconjunto del proyecto al motor configurado."},
-    {id: "assembly", title: "Ensamblando SQL", detail: "Normalizando salida, limpiando bloques y verificando contenido util."},
+    {id: "request", title: "Generando script", detail: "Construyendo DDL, relaciones, documentacion y plantillas base."},
+    {id: "assembly", title: "Completando salida", detail: "Intentando enriquecer el resultado con SQL adicional de IA si aplica."},
   ];
 
   const baseAISettings = () => new utils.AISettings({HasAPIKey: false, OpenAIModel: "gpt-5-mini"});
@@ -40,6 +41,7 @@
   let viewState: ViewState = "select";
   let aiSettings: utils.AISettings = baseAISettings();
   let generatedResult: utils.SQLGenerationResult | null = null;
+  let resultView: ResultView = "generated";
   let selectedIds = new Set<number>();
   let selectedIntersectionIds = new Set<number>();
   let database = databaseOptions[0].value;
@@ -59,13 +61,15 @@
   const pulseMessages = [
     "Preparando consulta",
     "Leyendo definiciones",
-    "Esperando SQL",
+    "Generando script",
     "Puliendo salida",
   ];
 
   $: totalSelectable = entities.length + intersectionEntities.length;
   $: selectedCount = selectedIds.size + selectedIntersectionIds.size;
-  $: canGenerate = aiSettings.HasAPIKey && selectedCount > 0 && database.trim().length > 0 && !generateBusy;
+  $: canGenerate = selectedCount > 0 && database.trim().length > 0 && !generateBusy;
+  $: hasGeneratedScript = !!generatedResult?.GeneratedScript?.trim();
+  $: hasAISQL = !!generatedResult?.SQL?.trim();
   $: activeStage = pipelineStages[Math.min(loadingStageIndex, pipelineStages.length - 1)];
 
   onDestroy(() => {
@@ -90,6 +94,7 @@
   const resetState = async () => {
     clearMessages();
     generatedResult = null;
+    resultView = "generated";
     viewState = "select";
     apiKeyDraft = "";
     settingsExpanded = false;
@@ -115,6 +120,7 @@
   const returnToSelection = () => {
     clearMessages();
     generatedResult = null;
+    resultView = "generated";
     viewState = "select";
   };
 
@@ -229,9 +235,6 @@
 
   const handleGenerate = async () => {
     if (!canGenerate) {
-      if (!aiSettings.HasAPIKey) {
-        settingsExpanded = true;
-      }
       return;
     }
 
@@ -248,11 +251,12 @@
         database,
       );
 
-      if (!generatedResult?.SQL?.trim()) {
+      if (!generatedResult?.GeneratedScript?.trim()) {
         generatedResult = null;
-        throw new Error("La IA no devolvio SQL.");
+        throw new Error("No se pudo generar el script local.");
       }
 
+      resultView = "generated";
       finishLoadingPresentation();
       await new Promise((resolve) => setTimeout(resolve, 320));
       viewState = "result";
@@ -272,12 +276,20 @@
     await handleGenerate();
   };
 
+  const copyGeneratedScript = async () => {
+    if (!generatedResult?.GeneratedScript?.trim()) {
+      return;
+    }
+    await navigator.clipboard.writeText(generatedResult.GeneratedScript);
+    showToast("Script generado copiado al portapapeles.", "success");
+  };
+
   const copySQL = async () => {
     if (!generatedResult?.SQL?.trim()) {
       return;
     }
     await navigator.clipboard.writeText(generatedResult.SQL);
-    showToast("SQL copiado al portapapeles.", "success");
+    showToast("SQL de IA copiado al portapapeles.", "success");
   };
 
   const copyJSON = async () => {
@@ -294,25 +306,25 @@
     <div class="modal-shell" role="dialog" aria-modal="true" aria-labelledby="ai-export-title" on:click|stopPropagation>
       <header class="modal-head">
         <div>
-          <p class="modal-kicker">@ Exportar con IA</p>
+          <p class="modal-kicker">@ Exportar scripts</p>
           <h2 id="ai-export-title">
             {#if viewState === "select"}
-              Selecciona tablas y genera SQL
+              Selecciona tablas y genera scripts
             {:else if viewState === "loading"}
-              Generando SQL
+              Generando scripts
             {:else if viewState === "result"}
               Resultado listo
             {:else}
-              No se pudo generar SQL
+              No se pudo generar la exportacion
             {/if}
           </h2>
           <p class="modal-hint">
             {#if viewState === "select"}
-              Elige el subconjunto del modelo, define el motor y lanza una corrida limpia.
+              Elige el subconjunto del modelo, define el motor y genera un script completo con opcion adicional de SQL por IA.
             {:else if viewState === "loading"}
               El pipeline esta procesando tu esquema. La salida aparecera en una vista separada.
             {:else if viewState === "result"}
-              Revisa, copia y vuelve a correr si quieres afinar otro subconjunto del proyecto.
+              Revisa el script local, compara la salida de IA si existe y vuelve a correr si quieres afinar otro subconjunto.
             {:else}
               La generacion se interrumpio. Puedes volver a la seleccion o reintentar sin perder contexto.
             {/if}
@@ -335,9 +347,9 @@
                   </div>
                   <span class={`status-chip ${aiSettings.HasAPIKey ? 'status-chip--ok' : 'status-chip--warn'}`}>
                     {#if aiSettings.HasAPIKey}
-                      API key lista
+                      IA disponible
                     {:else}
-                      Falta API key
+                      Solo script local
                     {/if}
                   </span>
                 </div>
@@ -358,9 +370,9 @@
                 <div class="config-actions">
                   <button class="control control--sm control--ghost" type="button" on:click={() => settingsExpanded = !settingsExpanded}>
                     <ButtonIcon name="spark"/>
-                    <span>{settingsExpanded ? "Ocultar configuracion" : "Configurar API key"}</span>
+                    <span>{settingsExpanded ? "Ocultar configuracion" : "Configurar salida IA"}</span>
                   </button>
-                  <span class="model-note">Modelo: {aiSettings.OpenAIModel}</span>
+                  <span class="model-note">Modelo IA: {aiSettings.OpenAIModel}</span>
                 </div>
 
                 {#if settingsExpanded}
@@ -376,7 +388,7 @@
                         disabled={settingsBusy}
                       />
                     </label>
-                    <p class="settings-note">Se guarda en la configuracion local del usuario, fuera del archivo del proyecto.</p>
+                    <p class="settings-note">La API key es opcional. Si existe, ademas del script local se intentara generar SQL con IA.</p>
                     <div class="settings-actions">
                       <button class="control control--sm control--accent" type="button" on:click={saveApiKey} disabled={settingsBusy}>
                         <ButtonIcon name="save"/>
@@ -413,7 +425,7 @@
                   <span class="summary-callout__step">01</span>
                   <div>
                     <strong>Seleccion</strong>
-                    <p>Elige solo lo necesario. Menos ruido produce SQL mas consistente.</p>
+                    <p>Elige solo lo necesario. Menos ruido produce scripts mas consistentes.</p>
                   </div>
                 </div>
               </div>
@@ -423,7 +435,7 @@
               <div class="selection-card__head">
                 <div>
                   <p class="label">Tablas</p>
-                  <p class="muted">Marca solo las necesarias para que el prompt sea mas preciso.</p>
+                  <p class="muted">Marca solo las necesarias para generar DDL, relaciones, comentarios y plantillas de insercion.</p>
                 </div>
                 <button class="control control--sm control--ghost" type="button" on:click={toggleAll}>
                   <ButtonIcon name="check"/>
@@ -519,20 +531,27 @@
             <div class="result-banner">
               <div>
                 <p class="label">Salida final</p>
-                <h3>SQL generado para {generatedResult.Database}</h3>
-                <p class="muted">Subconjunto: {selectedCount} tablas | Modelo: {generatedResult.Model}</p>
+                <h3>Scripts generados para {generatedResult.Database}</h3>
+                <p class="muted">Subconjunto: {selectedCount} tablas | Modelo IA: {generatedResult.Model}</p>
               </div>
               <div class="result-banner__actions">
                 <button class="control control--sm control--ghost" type="button" on:click={copyJSON}>
                   <ButtonIcon name="copy"/>
                   <span>Copiar JSON</span>
                 </button>
-                <button class="control control--sm control--accent" type="button" on:click={copySQL}>
+                <button class="control control--sm control--accent" type="button" on:click={copyGeneratedScript}>
                   <ButtonIcon name="copy"/>
-                  <span>Copiar SQL</span>
+                  <span>Copiar script</span>
                 </button>
               </div>
             </div>
+
+            {#if generatedResult.AIError}
+              <div class="notice notice--soft">
+                <strong>SQL con IA no disponible</strong>
+                <p>{generatedResult.AIError}</p>
+              </div>
+            {/if}
 
             <div class="result-grid">
               <aside class="result-sidecard">
@@ -546,12 +565,16 @@
                     <strong>{generatedResult.Database}</strong>
                     <span>motor</span>
                   </div>
+                  <div>
+                    <strong>{hasAISQL ? "si" : "no"}</strong>
+                    <span>sql IA</span>
+                  </div>
                 </div>
                 <div class="summary-callout">
                   <span class="summary-callout__step">03</span>
                   <div>
                     <strong>Resultado</strong>
-                    <p>Si quieres comparar variantes, vuelve a la seleccion sin cerrar el flujo.</p>
+                    <p>El script local incluye tablas, relaciones, comentarios y plantillas INSERT para arrancar sin depender de la IA.</p>
                   </div>
                 </div>
               </aside>
@@ -562,8 +585,40 @@
                     <p class="label">Script</p>
                     <p class="muted">Revisa el DDL antes de llevarlo a produccion.</p>
                   </div>
+                  <div class="result-tabs">
+                    <button
+                      class={`control control--sm ${resultView === 'generated' ? 'control--accent' : 'control--ghost'}`}
+                      type="button"
+                      on:click={() => resultView = "generated"}
+                    >
+                      <span>Generado</span>
+                    </button>
+                    <button
+                      class={`control control--sm ${resultView === 'ai' ? 'control--accent' : 'control--ghost'}`}
+                      type="button"
+                      on:click={() => resultView = "ai"}
+                      disabled={!hasAISQL}
+                    >
+                      <span>IA</span>
+                    </button>
+                    {#if resultView === "ai" && hasAISQL}
+                      <button class="control control--sm control--ghost" type="button" on:click={copySQL}>
+                        <ButtonIcon name="copy"/>
+                        <span>Copiar SQL IA</span>
+                      </button>
+                    {/if}
+                  </div>
                 </div>
-                <pre class="sql-output"><code>{generatedResult.SQL}</code></pre>
+                {#if resultView === "generated"}
+                  <pre class="sql-output"><code>{generatedResult.GeneratedScript}</code></pre>
+                {:else if hasAISQL}
+                  <pre class="sql-output"><code>{generatedResult.SQL}</code></pre>
+                {:else}
+                  <div class="notice notice--soft">
+                    <strong>Sin salida de IA</strong>
+                    <p>La corrida genero el script local correctamente, pero no hay SQL adicional de IA para mostrar.</p>
+                  </div>
+                {/if}
               </section>
             </div>
           </section>
@@ -593,10 +648,10 @@
           </button>
           <button class="control control--accent" type="button" on:click={handleGenerate} disabled={!canGenerate}>
             <ButtonIcon name="spark"/>
-            <span>Generar SQL</span>
+            <span>Generar scripts</span>
           </button>
         {:else if viewState === "loading"}
-          <span class="footer-status">Consultando OpenAI y preparando una salida ejecutable.</span>
+          <span class="footer-status">Generando script local y preparando salida adicional de IA si esta configurada.</span>
         {:else if viewState === "result"}
           <button class="control control--ghost" type="button" on:click={closeDialog}>
             <ButtonIcon name="close"/>
@@ -813,7 +868,7 @@
   }
 
   .result-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .summary-stats div,
@@ -935,6 +990,14 @@
   .notice--soft {
     border-color: var(--line-soft);
     background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+  }
+
+  .result-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
   .state-view--loading,
@@ -1228,6 +1291,11 @@
 
     .result-banner__actions {
       width: 100%;
+    }
+
+    .result-tabs {
+      width: 100%;
+      justify-content: stretch;
     }
   }
 </style>

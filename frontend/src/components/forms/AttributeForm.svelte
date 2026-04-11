@@ -332,7 +332,7 @@
       rows="1"
       placeholder="Breve descripción"
       bind:value={description}
-    />
+    ></textarea>
   </div>
 
   <div class="field">
@@ -354,9 +354,7 @@
             <span class="type-trigger-label">Tipo elegido</span>
             <strong>{typeSelection}</strong>
           </span>
-          <svg class:chevron-open={showTypeMenu} viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6.72 8.97a.75.75 0 0 1 1.06 0L12 13.19l4.22-4.22a.75.75 0 1 1 1.06 1.06l-4.75 4.75a.75.75 0 0 1-1.06 0L6.72 10.03a.75.75 0 0 1 0-1.06Z"/>
-          </svg>
+          <ButtonIcon name="chevron-down" class={showTypeMenu ? "chevron-open" : ""} />
         </button>
 
       </div>

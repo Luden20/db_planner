@@ -21,10 +21,12 @@ type AISettings struct {
 }
 
 type SQLGenerationResult struct {
-	Database   string
-	Model      string
-	SQL        string
-	ExportJSON string
+	Database        string
+	Model           string
+	SQL             string
+	GeneratedScript string
+	AIError         string
+	ExportJSON      string
 }
 
 func DefaultOpenAIModel() string {

@@ -5,20 +5,18 @@
   import {GetEntity, MarkEntityStatus, MoveAttribute, MoveIntersectionAttribute, Save} from "../../wailsjs/go/main/App";
   import ButtonIcon from "./ButtonIcon.svelte";
   import EntityFocusCard from "./EntityFocusCard.svelte";
+  import ScopeSwitch from "./studio/ScopeSwitch.svelte";
+  import StickyStack from "./studio/StickyStack.svelte";
   import CreateEntity from "./forms/CreateEntity.svelte";
   import AttributeForm from "./forms/AttributeForm.svelte";
-  import DeleteAttribute from "./forms/DeleteAttribute.svelte";
+  import AttributesTable from "./AttributesTable.svelte";
   import {showToast} from "../lib/toast";
+  import {createVerticalAutoScroller, getErrorMessage, runViewTransition} from "../lib/ui-helpers";
 
   type RelationGroup = {
     type: string;
     label: string;
     items: string[];
-  };
-  type ViewTransitionDocument = Document & {
-    startViewTransition?: (update: () => void | Promise<void>) => {
-      finished: Promise<void>;
-    };
   };
 
   export let project: utils.DbProject;
@@ -26,11 +24,8 @@
   export let focusEntityId: number | null = null;
   export let onJumpTo: (tab: "entities" | "relations" | "tertiary", entityId?: number | null) => void = () => {};
 
-  let stickySentinel: HTMLDivElement | null = null;
-  let stickyStack: HTMLDivElement | null = null;
   let tableWrapper: HTMLDivElement | null = null;
   let stickyStackHeight = 0;
-  let stickyStackPinned = false;
   let activeScope: "strong" | "intersection" = "strong";
   let entities: utils.Entity[] = [];
   let intersectionEntities: utils.IntersectionEntity[] = [];
@@ -46,8 +41,6 @@
   let relationSummary: RelationGroup[] = [];
   let activeRelationType: string | null = null;
   let activeRelationGroup: RelationGroup | null = null;
-  let autoScrollFrame: number | null = null;
-  let autoScrollDirection: -1 | 0 | 1 = 0;
   let approvalUpdating = false;
   let relationSummaryCount = 0;
   let relationRules: utils.RelationRule[] = [];
@@ -171,8 +164,11 @@
     return inherited;
   };
 
-  const AUTO_SCROLL_EDGE_PX = 72;
-  const AUTO_SCROLL_STEP = 14;
+  const autoScroller = createVerticalAutoScroller({
+    edgePx: 72,
+    stepPx: 14,
+    getContainer: () => tableWrapper
+  });
   const relationTypeLabels: Record<string, string> = {
     "1:1": "Uno a uno",
     "1:N": "Uno a muchos",
@@ -183,84 +179,10 @@
   };
   const relationTypeOrder = ["1:1", "1:N", "N:1", "N:N", "1:Np", "Np:1"];
 
-  const prefersReducedMotion = () =>
-    typeof window !== "undefined"
-    && typeof window.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const runAttributeTransition = (update: () => void | Promise<void>) =>
+    runViewTransition(update, "No se pudo aplicar la transicion de atributos:");
 
-  const runAttributeTransition = async (update: () => void | Promise<void>) => {
-    const doc = typeof document !== "undefined" ? (document as ViewTransitionDocument) : null;
-    if (doc?.startViewTransition && !prefersReducedMotion()) {
-      try {
-        const transition = doc.startViewTransition(update);
-        await transition.finished;
-        return;
-      } catch (err) {
-        console.warn("No se pudo aplicar la transicion de atributos:", err);
-      }
-    }
-    await update();
-  };
-
-  const runAutoScroll = () => {
-    if (!tableWrapper || autoScrollDirection === 0) {
-      autoScrollFrame = null;
-      return;
-    }
-
-    tableWrapper.scrollTop += autoScrollDirection * AUTO_SCROLL_STEP;
-    autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
-  };
-
-  const startAutoScroll = (direction: -1 | 1) => {
-    if (autoScrollDirection === direction && autoScrollFrame !== null) {
-      return;
-    }
-
-    autoScrollDirection = direction;
-    if (autoScrollFrame === null) {
-      autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
-    }
-  };
-
-  const stopAutoScroll = () => {
-    autoScrollDirection = 0;
-    if (autoScrollFrame !== null) {
-      window.cancelAnimationFrame(autoScrollFrame);
-      autoScrollFrame = null;
-    }
-  };
-
-  const updateAutoScroll = (event: DragEvent) => {
-    if (!tableWrapper) {
-      return;
-    }
-
-    const bounds = tableWrapper.getBoundingClientRect();
-    if (event.clientY <= bounds.top + AUTO_SCROLL_EDGE_PX) {
-      startAutoScroll(-1);
-      return;
-    }
-    if (event.clientY >= bounds.bottom - AUTO_SCROLL_EDGE_PX) {
-      startAutoScroll(1);
-      return;
-    }
-
-    stopAutoScroll();
-  };
-
-  const syncStickyState = () => {
-    if (!stickySentinel) {
-      stickyStackPinned = false;
-      return;
-    }
-
-    stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
-  };
-
-  const syncStickyStackHeight = () => {
-    stickyStackHeight = stickyStack?.offsetHeight ?? 0;
-  };
+  const updateAutoScroll = (event: DragEvent) => autoScroller.updateFromDragEvent(event);
 
   onMount(() => {
     if (entities.length && selectedId === null) {
@@ -270,20 +192,8 @@
       selectedIntersectionRelationId = intersectionEntities[0].RelationID;
     }
 
-    syncStickyStackHeight();
-    syncStickyState();
-
-    if (typeof ResizeObserver === "undefined" || !stickyStack) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      syncStickyStackHeight();
-    });
-    observer.observe(stickyStack);
-
     return () => {
-      observer.disconnect();
+      autoScroller.stop();
     };
   });
 
@@ -330,12 +240,6 @@
     activeRelationType = relationSummary[0].type;
   }
   $: activeRelationGroup = relationSummary.find((group) => group.type === activeRelationType) ?? relationSummary[0] ?? null;
-  $: if (stickySentinel) {
-    syncStickyState();
-  }
-  $: if (stickyStack) {
-    syncStickyStackHeight();
-  }
 
   const loadEntity = async (id: number) => {
     loading = true;
@@ -351,7 +255,7 @@
       }
       lastLoadedId = id;
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      const message = getErrorMessage(err);
       showToast(`No se pudo cargar la entidad: ${message}`, "error");
     } finally {
       loading = false;
@@ -359,7 +263,7 @@
   };
 
   const clearDrag = () => {
-    stopAutoScroll();
+    autoScroller.stop();
     draggingIndex = null;
     hoverIndex = null;
   };
@@ -415,7 +319,7 @@
     if (tableWrapper && nextTarget && tableWrapper.contains(nextTarget)) {
       return;
     }
-    stopAutoScroll();
+    autoScroller.stop();
   };
 
   const nextEntity = async () => {
@@ -470,7 +374,7 @@
         await loadEntity(current.Id);
       }
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      const message = getErrorMessage(err);
       showToast(`No se pudo reordenar el atributo: ${message}`, "error");
     }
   };
@@ -536,7 +440,7 @@
           items: groupedItems.get(type) || []
         }));
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      const message = getErrorMessage(err);
       console.error("No se pudo cargar resumen de relaciones:", message);
       relationSummary = [];
     }
@@ -603,7 +507,7 @@
       await onRefresh();
       await loadEntity(current.Id);
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      const message = getErrorMessage(err);
       showToast(`No se pudo actualizar la aprobación: ${message}`, "error");
     } finally {
       approvalUpdating = false;
@@ -628,41 +532,15 @@
 
 </script>
 
-<svelte:window on:scroll={syncStickyState} on:resize={syncStickyState}/>
-
 <section class="attributes-studio" style={`--attributes-sticky-total-height: ${stickyStackHeight}px;`}>
-  <div class="attributes-sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
-  <div
-    class:attributes-sticky-stack={true}
-    class:attributes-sticky-stack--pinned={stickyStackPinned}
-    bind:this={stickyStack}
-  >
+  <StickyStack bind:height={stickyStackHeight}>
     <div class="tab-toolbar attributes-toolbar">
       <div class="attributes-toolbar__copy">
         <p class="label">Atributos</p>
         <p class="muted">{activeScope === "strong" ? "Gestión de atributos y relaciones." : "Administra atributos de intersección."}</p>
       </div>
       <div class="attributes-toolbar__meta">
-        <div class="scope-switch" role="tablist" aria-label="Tipo de atributos">
-          <button
-            class={`scope-switch__item ${activeScope === 'strong' ? 'scope-switch__item--active' : ''}`}
-            type="button"
-            role="tab"
-            aria-selected={activeScope === "strong"}
-            on:click={() => switchScope("strong")}
-          >
-            Fuertes
-          </button>
-          <button
-            class={`scope-switch__item ${activeScope === 'intersection' ? 'scope-switch__item--active' : ''}`}
-            type="button"
-            role="tab"
-            aria-selected={activeScope === "intersection"}
-            on:click={() => switchScope("intersection")}
-          >
-            Intersección
-          </button>
-        </div>
+        <ScopeSwitch {activeScope} onSwitch={switchScope}/>
         <span class="studio-chip">{activeScope === "strong" ? entities.length : intersectionEntities.length} entidades</span>
         <span class="studio-chip studio-chip--quiet">{activeScope === "strong" ? (current?.Attributes?.length ?? 0) : (currentIntersection?.Entity.Attributes?.length ?? 0)} atributos</span>
         {#if activeScope === "strong"}
@@ -764,7 +642,7 @@
         {/if}
       </div>
     {/if}
-  </div>
+  </StickyStack>
 
   {#if activeScope === "strong" && !entities.length}
     <div class="empty-panel">Crea entidades para gestionar atributos.</div>
@@ -813,161 +691,25 @@
               <p class="muted">Arrastra filas para cambiar el orden natural de la definición.</p>
             </div>
           </div>
-          <div
-            class="table-wrapper frosted"
-            bind:this={tableWrapper}
-            on:dragover={handleTableDragOver}
-            on:dragleave={handleTableDragLeave}
-            on:drop={stopAutoScroll}
-          >
-            <table class="entities-table">
-              <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Descripción</th>
-                <th style="width: 120px;">Tipo</th>
-                <th style="width: 80px;">Mandatorio</th>
-                <th style="width: 120px;">Acciones</th>
-              </tr>
-              </thead>
-              <tbody class="draggable-body">
-              {#if !current.Attributes?.some(a => a.KeyType === "pk")}
-                {#each getInheritedPKs(current, project) as inherited}
-                  <tr class="inherited-pk-row" draggable="false">
-                    <td class="inherited-name">
-                      <span class="inherited-tag">FK heredada</span>
-                      {inherited.attributeName || `PK de ${inherited.entityName} pendiente por definir`}
-                      <button 
-                        class="control control--icon control--xs jump-btn" 
-                        on:click={() => jumpToEntity(inherited.entityName)}
-                        title={`Ir a ${inherited.entityName}`}
-                      >
-                        <ButtonIcon name="jump"/>
-                      </button>
-                    </td>
-                    <td>
-                      {#if inherited.attributeName}
-                        <span class="muted italic">{inherited.description || "Sin descripción."}</span>
-                      {:else}
-                        <span class="muted italic">Atributo heredado por relación con {inherited.entityName}</span>
-                      {/if}
-                    </td>
-                    <td class="muted">{inherited.type || "—"}</td>
-                    <td>
-                      {#if inherited.isOptional}
-                        <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
-                      {:else}
-                        <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
-                      {/if}
-                    </td>
-                    <td class="muted">
-                      <div class="row-actions" style="justify-content: flex-start; gap: 8px;">
-                        Lectura
-                      </div>
-                    </td>
-                  </tr>
-                {/each}
-              {/if}
-
-              {#if (!current.Attributes || current.Attributes.length === 0) && getInheritedPKs(current, project).length === 0}
-                <tr class="empty-row" draggable="false">
-                  <td colspan="5">No hay atributos definidos aún.</td>
-                </tr>
-              {:else}
-                {#each (current.Attributes || []) as attribute, index (attribute.Id)}
-                  <tr
-                    class:dragging={draggingIndex === index}
-                    class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
-                    class:pk-row={attribute.KeyType === "pk"}
-                    draggable={attribute.KeyType !== "pk"}
-                    style={`view-transition-name: attribute-row-${attribute.Id};`}
-                    on:dragstart={(event) => attribute.KeyType !== "pk" && startDrag(index, event)}
-                    on:dragover={(event) => attribute.KeyType !== "pk" && handleDragOver(index, event)}
-                    on:dragenter={(event) => attribute.KeyType !== "pk" && handleDragOver(index, event)}
-                    on:drop={(event) => attribute.KeyType !== "pk" && handleDrop(index, event)}
-                    on:dragend={clearDrag}
-                  >
-                    <td class:inherited-name={attribute.KeyType === "pk"}>
-                      {#if attribute.KeyType === "pk"}
-                        <span class="pk-tag">PK</span>
-                      {/if}
-                      {attribute.Name}
-                    </td>
-                    <td>{attribute.Description}</td>
-                    <td>{attribute.Type || "Por definir"}</td>
-                    <td>
-                      {#if attribute.Optional}
-                        <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
-                      {:else}
-                        <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
-                      {/if}
-                    </td>
-                    <td>
-                      <div class="row-actions">
-                        <AttributeForm
-                          entityId={current.Id}
-                          entity={current}
-                          attribute={attribute}
-                          allowPrimaryKey={true}
-                          onSaved={async () => {
-                            await onRefresh();
-                            await loadEntity(current.Id);
-                          }}
-                        />
-                        <DeleteAttribute
-                          entityId={current.Id}
-                          attributeId={attribute.Id}
-                          onSaved={async () => {
-                            await onRefresh();
-                            await loadEntity(current.Id);
-                          }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-
-                  {#if attribute.KeyType === "pk"}
-                    {#each getInheritedPKs(current, project) as inherited}
-                      <tr class="inherited-pk-row" draggable="false">
-                        <td class="inherited-name">
-                          <span class="inherited-tag">FK heredada</span>
-                          {inherited.attributeName || `PK de ${inherited.entityName} pendiente por definir`}
-                          <button 
-                            class="control control--icon control--xs jump-btn" 
-                            on:click={() => jumpToEntity(inherited.entityName)}
-                            title={`Ir a ${inherited.entityName}`}
-                          >
-                            <ButtonIcon name="jump"/>
-                          </button>
-                        </td>
-                        <td>
-                          {#if inherited.attributeName}
-                            <span class="muted italic">{inherited.description || "Sin descripción."}</span>
-                          {:else}
-                            <span class="muted italic">Atributo heredado por relación con {inherited.entityName}</span>
-                          {/if}
-                        </td>
-                        <td class="muted">{inherited.type || "—"}</td>
-                        <td>
-                          {#if inherited.isOptional}
-                            <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
-                          {:else}
-                            <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
-                          {/if}
-                        </td>
-                        <td class="muted">
-                          <div class="row-actions" style="justify-content: flex-start; gap: 8px;">
-                            Lectura
-                          </div>
-                        </td>
-                      </tr>
-                    {/each}
-                  {/if}
-                {/each}
-              {/if}
-              </tbody>
-            </table>
-          </div>
+          <AttributesTable
+            entity={current}
+            entityId={current.Id}
+            attributes={current.Attributes || []}
+            inheritedPKs={getInheritedPKs(current, project)}
+            draggingIndex={draggingIndex}
+            hoverIndex={hoverIndex}
+            bind:tableRef={tableWrapper}
+            onDragStart={startDrag}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onDragEnd={clearDrag}
+            onTableDragOver={handleTableDragOver}
+            onTableDragLeave={handleTableDragLeave}
+            onTableDrop={autoScroller.stop}
+            onJumpToEntity={jumpToEntity}
+            onRefresh={onRefresh}
+            onEntityReload={async () => { await loadEntity(current.Id); }}
+          />
         </section>
       </div>
     </section>
@@ -997,807 +739,25 @@
               <p class="muted">Las intersecciones permiten agregar atributos, pero no marcar PK por ahora.</p>
             </div>
           </div>
-          <div
-            class="table-wrapper frosted"
-            bind:this={tableWrapper}
-            on:dragover={handleTableDragOver}
-            on:dragleave={handleTableDragLeave}
-            on:drop={stopAutoScroll}
-          >
-            <table class="entities-table">
-              <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Descripción</th>
-                <th style="width: 120px;">Tipo</th>
-                <th style="width: 80px;">Mandatorio</th>
-                <th style="width: 120px;">Acciones</th>
-              </tr>
-              </thead>
-              <tbody class="draggable-body">
-              {#each getIntersectionInheritedPKs(currentIntersection, project) as inherited}
-                <tr class="inherited-pk-row intersection-pk" draggable="false">
-                  <td class="inherited-name">
-                    <span class="inherited-tag">PK heredada</span>
-                    {inherited.attributeName || `PK de ${inherited.entityName} pendiente por definir`}
-                  </td>
-                  <td>
-                    {#if inherited.attributeName}
-                      <span class="muted italic">{inherited.description || "Sin descripción."}</span>
-                    {:else}
-                      <span class="muted italic">Atributo heredado por relación con {inherited.entityName}</span>
-                    {/if}
-                  </td>
-                  <td class="muted">{inherited.type || "—"}</td>
-                  <td>
-                    {#if inherited.isOptional}
-                      <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
-                    {:else}
-                      <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
-                    {/if}
-                  </td>
-                  <td class="muted">
-                    <div class="row-actions" style="justify-content: flex-start; gap: 8px;">
-                      Lectura
-                    </div>
-                  </td>
-                </tr>
-              {/each}
-
-              {#if !currentIntersection.Entity.Attributes || currentIntersection.Entity.Attributes.length === 0}
-                {#if getIntersectionInheritedPKs(currentIntersection, project).length === 0}
-                  <tr class="empty-row" draggable="false">
-                    <td colspan="5">No hay atributos definidos aún.</td>
-                  </tr>
-                {/if}
-              {:else}
-                {#each currentIntersection.Entity.Attributes as attribute, index (attribute.Id)}
-                  <tr
-                    class:dragging={draggingIndex === index}
-                    class:drag-hover={hoverIndex === index && draggingIndex !== null && draggingIndex !== index}
-                    draggable="true"
-                    style={`view-transition-name: intersection-attribute-row-${attribute.Id};`}
-                    on:dragstart={(event) => startDrag(index, event)}
-                    on:dragover={(event) => handleDragOver(index, event)}
-                    on:dragenter={(event) => handleDragOver(index, event)}
-                    on:drop={(event) => handleDrop(index, event)}
-                    on:dragend={clearDrag}
-                  >
-                    <td>{attribute.Name}</td>
-                    <td>{attribute.Description}</td>
-                    <td>{attribute.Type || "Por definir"}</td>
-                    <td>
-                      {#if attribute.Optional}
-                        <span class="badge badge--optional" title="Esta columna puede ser NULL">No</span>
-                      {:else}
-                        <span class="badge badge--mandatory" title="Esta columna no puede ser NULL">Sí</span>
-                      {/if}
-                    </td>
-                    <td>
-                      <div class="row-actions">
-                        <AttributeForm
-                          relationId={currentIntersection.RelationID}
-                          entity={currentIntersection.Entity}
-                          attribute={attribute}
-                          allowPrimaryKey={false}
-                          onSaved={async () => {
-                            await onRefresh();
-                          }}
-                        />
-                        <DeleteAttribute
-                          relationId={currentIntersection.RelationID}
-                          attributeId={attribute.Id}
-                          onSaved={async () => {
-                            await onRefresh();
-                          }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                {/each}
-              {/if}
-              </tbody>
-            </table>
-          </div>
+          <AttributesTable
+            isIntersection={true}
+            currentIntersection={currentIntersection}
+            intersectionAttributes={currentIntersection.Entity.Attributes || []}
+            intersectionInheritedPKs={getIntersectionInheritedPKs(currentIntersection, project)}
+            draggingIndex={draggingIndex}
+            hoverIndex={hoverIndex}
+            bind:tableRef={tableWrapper}
+            onDragStart={startDrag}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onDragEnd={clearDrag}
+            onTableDragOver={handleTableDragOver}
+            onTableDragLeave={handleTableDragLeave}
+            onTableDrop={autoScroller.stop}
+            onRefresh={onRefresh}
+          />
         </section>
       </div>
     </section>
   {/if}
 </section>
-
-<style>
-  .tab-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-
-  .label {
-    margin: 0;
-    color: #9ab5e4;
-    font-size: 12px;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-  }
-
-  .muted {
-    margin: 6px 0 0;
-    color: #cfd9e9;
-    opacity: 0.75;
-  }
-
-  .table-wrapper {
-    overflow: auto;
-  }
-
-  .toolbar-actions {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
-  .view-jumps {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
-  .scope-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem;
-    border-radius: 999px;
-    border: 1px solid var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
-  }
-
-  .scope-switch__item {
-    min-height: 2.2rem;
-    padding: 0.45rem 0.85rem;
-    border-radius: 999px;
-    border: none;
-    background: transparent;
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    transition: background 140ms ease, color 140ms ease, transform 140ms ease;
-  }
-
-  .scope-switch__item:hover {
-    transform: translateY(-1px);
-  }
-
-  .scope-switch__item--active {
-    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    color: var(--accent-strong);
-  }
-
-  .banner-title {
-    font-size: 0.66rem;
-    letter-spacing: 0.1em;
-    color: var(--accent);
-    text-transform: uppercase;
-    font-weight: 800;
-  }
-
-  .relation-count-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
-    padding: 0.38rem 0.78rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.78rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .attributes-toolbar__relations {
-    display: grid;
-    gap: 0.4rem;
-    padding: 0.62rem 0.8rem 0.72rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-md) - 4px);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, var(--surface)), color-mix(in srgb, var(--surface) 98%, var(--surface-strong))),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, var(--surface-strong)), transparent 38%);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .relation-bar {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.55rem;
-    padding: 0.4rem 0.55rem;
-    border-radius: 0.72rem;
-    border: 1px solid var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
-  }
-
-  .relation-bar__picker {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    min-width: 0;
-    flex: 0 0 auto;
-    align-self: center;
-  }
-
-  .relation-bar__tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    min-width: 0;
-    flex: 1 1 auto;
-    align-self: center;
-  }
-
-  .relation-type-select {
-    min-width: 4.9rem;
-    width: 4.9rem;
-    min-height: 2rem;
-    padding: 0.42rem 2rem 0.42rem 0.68rem;
-    padding-right: 2rem;
-    font-size: 0.72rem;
-  }
-
-  .relation-type-select:focus {
-    outline: none;
-  }
-
-  .relation-bar__empty {
-    display: inline-flex;
-    align-items: center;
-    min-height: 2rem;
-    color: var(--ink-faint);
-    font-size: 0.74rem;
-  }
-
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    max-width: 180px;
-    min-height: 1.6rem;
-    padding: 3px 8px;
-    border-radius: 999px;
-    background: rgba(90, 209, 255, 0.1);
-    color: #d9e4f5;
-    border: 1px solid rgba(90, 209, 255, 0.16);
-    font-size: 0.72rem;
-    line-height: 1.15;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .relation-pill {
-    max-width: none;
-    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
-    gap: 0.28rem;
-    padding: 2px 4px 2px 8px;
-    border-color: color-mix(in srgb, var(--accent) 12%, var(--border));
-    color: var(--ink-faint);
-  }
-
-  .pill-text {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .jump-btn, .jump-btn-inline {
-    flex-shrink: 0;
-    opacity: 0.5;
-    transition: opacity 0.2s, transform 0.2s;
-    background: transparent;
-    border: none;
-    padding: 1px;
-    cursor: pointer;
-  }
-
-  .jump-btn:hover, .jump-btn-inline:hover {
-    opacity: 1;
-    transform: scale(1.1);
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  .inherited-name {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 500;
-  }
-
-  .inherited-tag {
-    display: inline-block;
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-weight: 700;
-    margin-right: 8px;
-    vertical-align: middle;
-  }
-
-  .intersection-pk .inherited-tag {
-    background: rgba(139, 92, 246, 0.15);
-    color: #a78bfa;
-  }
-
-  .pk-tag {
-    display: inline-block;
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    background: rgba(16, 185, 129, 0.15);
-    color: #34d399;
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-weight: 700;
-    margin-right: 8px;
-    vertical-align: middle;
-  }
-
-  :global(.badge--fk) {
-    background: #eab308;
-    color: #422006;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  :global(.badge--pk) {
-    background: #10b981;
-    color: #064e3b;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  :global(.badge--optional) {
-    background: #64748b;
-    color: #f1f5f9;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-
-  :global(.badge--mandatory) {
-    background: #f59e0b;
-    color: #451a03;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-
-
-  .entities-table th,
-  .entities-table td {
-    text-align: left;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.82rem;
-  }
-
-  .entities-table tbody tr:nth-child(odd):not(.empty-row),
-  .entities-table tbody tr:nth-child(even):not(.empty-row) {
-    background: transparent;
-  }
-
-  .draggable-body tr {
-    cursor: grab;
-    transition: background 120ms ease, transform 120ms ease, box-shadow 120ms ease;
-  }
-
-  .draggable-body tr:hover:not(.empty-row) {
-    background: rgba(135, 202, 255, 0.1);
-  }
-
-  .empty-row {
-    cursor: default;
-    text-align: center;
-    color: #cfd9e9;
-  }
-
-  .draggable-body tr.dragging {
-    opacity: 0.75;
-    background: rgba(255, 255, 255, 0.16);
-  }
-
-  .draggable-body tr.drag-hover {
-    background: rgba(90, 209, 255, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(90, 209, 255, 0.4);
-    transform: translateY(-1px);
-  }
-
-  .entity-nav {
-    display: inline-flex;
-    gap: 6px;
-    align-items: center;
-  }
-
-  .entity-switcher {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.7rem;
-    flex-wrap: wrap;
-  }
-
-  .entity-picker {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.55rem;
-    flex-wrap: wrap;
-  }
-
-  .entity-select {
-    border-radius: 10px;
-    background: rgba(21, 32, 46, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    color: #e8edf7;
-    padding: 10px 12px;
-    min-width: 220px;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-    appearance: none;
-    transition: border 140ms ease, box-shadow 140ms ease;
-  }
-
-  .entity-select:focus {
-    border-color: rgba(90, 209, 255, 0.8);
-    box-shadow: 0 0 0 2px rgba(90, 209, 255, 0.22);
-  }
-
-  .empty-panel {
-    padding: 24px 14px;
-    border-radius: 12px;
-    border: 1px dashed rgba(255, 255, 255, 0.12);
-    color: #cfd9e9;
-    text-align: center;
-  }
-
-  .row-actions {
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .intersection-origin {
-    display: inline-flex;
-    align-items: center;
-    min-height: 2rem;
-    padding: 0.38rem 0.72rem;
-    border-radius: 999px;
-    border: 1px solid var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
-    color: var(--ink-soft);
-    font-size: 0.78rem;
-    font-weight: 700;
-  }
-
-  @media (max-width: 720px) {
-    .entity-switcher {
-      margin-left: 0;
-      justify-content: flex-start;
-    }
-
-    .entity-picker {
-      width: 100%;
-    }
-
-    .relation-type-select {
-      min-width: 0;
-      width: 100%;
-    }
-
-    .relation-bar {
-      flex-direction: column;
-    }
-
-    .relation-bar__picker {
-      min-width: 0;
-      flex-basis: auto;
-    }
-  }
-
-  .tab-toolbar {
-    margin-bottom: 1rem;
-    padding: 1.05rem 1.1rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-md) - 4px);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 98%, var(--surface)), color-mix(in srgb, var(--surface) 100%, var(--surface-strong))),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, var(--surface-strong)), transparent 38%);
-    box-shadow: var(--shadow-sm);
-    backdrop-filter: blur(18px);
-  }
-
-  .label,
-  .banner-title {
-    color: var(--accent);
-    font-size: 0.74rem;
-    letter-spacing: 0.16em;
-    font-weight: 800;
-  }
-
-  .muted,
-  .entity-description,
-  .helper,
-  .empty-panel {
-    color: var(--ink-faint);
-    opacity: 1;
-  }
-
-  .entity-select {
-    border-color: var(--border);
-    background: var(--field-surface);
-    color: var(--ink);
-    box-shadow: none;
-  }
-
-  .entity-select:focus {
-    border-color: var(--focus-border);
-    box-shadow: var(--focus-ring);
-  }
-
-
-  .pill {
-    background: var(--chip-surface);
-    border-color: var(--line-soft);
-    color: var(--ink-soft);
-  }
-
-  .table-wrapper.frosted {
-    background: var(--surface-strong);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-sm);
-    max-height: calc(100vh - var(--attributes-sticky-total-height, 0px) - 8rem);
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-  }
-
-  .entities-table {
-    width: 100%;
-    border-collapse: collapse;
-    color: var(--ink);
-  }
-
-  .entities-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: var(--surface-strong);
-    color: var(--ink-faint);
-    border-bottom: 2px solid var(--border);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    text-align: left;
-    padding: 0.75rem 1rem;
-    box-shadow: inset 0 -1px 0 var(--line-soft);
-  }
-
-  .entities-table thead th:first-child {
-    border-top-left-radius: var(--radius-sm);
-  }
-
-  .entities-table thead th:last-child {
-    border-top-right-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:last-child td:first-child {
-    border-bottom-left-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:last-child td:last-child {
-    border-bottom-right-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:nth-child(odd):not(.empty-row),
-  .entities-table tbody tr:nth-child(even):not(.empty-row) {
-    background: transparent;
-  }
-
-  .entities-table tbody tr:hover:not(.empty-row) {
-    background: var(--hover-soft);
-  }
-
-  .empty-panel {
-    border-color: var(--line-soft);
-    background: color-mix(in srgb, var(--surface) 78%, transparent);
-  }
-
-  .attributes-studio {
-    --attributes-sticky-total-height: 0px;
-    display: grid;
-    gap: 1rem;
-  }
-
-  .attributes-sticky-stack {
-    margin-bottom: 18px;
-  }
-
-  .attributes-sticky-stack--pinned {
-    position: sticky;
-    top: 0;
-    z-index: calc(var(--layer-ribbon, 100) - 2);
-    background: var(--surface-strong);
-    margin-left: -1rem;
-    margin-right: -1rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .attributes-sticky-sentinel {
-    height: 1px;
-    margin-top: -1px;
-  }
-
-  .attributes-layout {
-    display: grid;
-    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
-    align-items: start;
-    gap: 1rem;
-  }
-
-  .attributes-deck {
-    display: grid;
-    gap: 1rem;
-    position: sticky;
-    top: calc(var(--attributes-sticky-total-height) + 1rem);
-    align-self: start;
-  }
-
-  .attributes-toolbar,
-  .attributes-stage,
-  .attributes-panel {
-    position: relative;
-    overflow: clip;
-  }
-
-  .attributes-toolbar::before,
-  .attributes-stage::before,
-  .attributes-panel::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: min(220px, 42%);
-    height: 1px;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 34%, transparent), transparent);
-    pointer-events: none;
-  }
-
-  .attributes-toolbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 0.9rem 1rem;
-    margin-bottom: 0;
-  }
-
-  .attributes-toolbar__copy {
-    max-width: 38rem;
-  }
-
-  .attributes-toolbar__meta {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-  }
-
-  .attributes-toolbar__actions {
-    grid-column: 1 / -1;
-  }
-
-  :global(.attributes-toolbar-trigger) {
-    min-height: 2.85rem;
-    padding: 0.72rem 1rem;
-    border-radius: 1rem;
-    font-size: 0.92rem;
-    box-shadow: 0 12px 22px color-mix(in srgb, var(--ink) 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
-  }
-
-  .studio-chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
-    padding: 0.42rem 0.78rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.76rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .studio-chip--quiet {
-    border-color: var(--line-soft);
-    background: color-mix(in srgb, var(--surface) 82%, transparent);
-    color: var(--ink-soft);
-  }
-
-  .attributes-stage {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .attributes-panel {
-    padding: 1rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-lg) - 2px);
-    background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 34%),
-      var(--panel-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .attributes-panel__head {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 0.9rem;
-  }
-
-  @media (max-width: 720px) {
-    .attributes-layout {
-      grid-template-columns: 1fr;
-    }
-
-    .attributes-focus-card {
-      position: static;
-    }
-
-    .attributes-toolbar,
-    .attributes-panel__head {
-      grid-template-columns: 1fr;
-      align-items: stretch;
-    }
-
-    .attributes-toolbar__meta {
-      justify-content: flex-start;
-    }
-
-    .entity-select {
-      min-width: 0;
-      flex: 1 1 14rem;
-    }
-
-    .attributes-panel {
-      padding: 0.9rem;
-    }
-    .studio-chip {
-      white-space: normal;
-    }
-  }
-
-</style>

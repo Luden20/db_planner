@@ -2,7 +2,7 @@
   import { flip } from "svelte/animate";
   import { quintOut } from "svelte/easing";
   import { fade, fly } from "svelte/transition";
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import {
     AddRole,
     AddRoleProcessPermission,
@@ -18,6 +18,13 @@
   import ButtonIcon from "./ButtonIcon.svelte";
   import ModalLauncher from "./ModalLauncher.svelte";
   import { showToast } from "../lib/toast";
+  import StudioToolbar from "./studio/StudioToolbar.svelte";
+  import StickyStack from "./studio/StickyStack.svelte";
+  import EmptyPanel from "./studio/EmptyPanel.svelte";
+  import Button from "./ui/Button.svelte";
+  import Badge from "./ui/Badge.svelte";
+  import Table from "./ui/Table.svelte";
+  import {getErrorMessage, runViewTransition} from "../lib/ui-helpers";
 
   type PermissionKey = "ViewPermission" | "InsertPermission" | "UpdatePermission" | "DeletePermission";
   type ProcessGroup = {
@@ -25,11 +32,6 @@
     name: string;
     description: string;
     processes: utils.Process[];
-  };
-  type ViewTransitionDocument = Document & {
-    startViewTransition?: (update: () => void | Promise<void>) => {
-      finished: Promise<void>;
-    };
   };
 
   export let project: utils.DbProject;
@@ -44,10 +46,6 @@
   ];
 
   let selectedRoleId: number | null = null;
-  let stickySentinel: HTMLDivElement | null = null;
-  let stickyStack: HTMLDivElement | null = null;
-  let stickyStackHeight = 0;
-  let stickyStackPinned = false;
   let busySection: string | null = null;
   let newRoleName = "";
   let newRoleDescription = "";
@@ -55,48 +53,8 @@
   let roleDraftDescription = "";
   let processPermissionDraft: Record<number, boolean> = {};
 
-  const prefersReducedMotion = () =>
-    typeof window !== "undefined"
-    && typeof window.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  const runRoleTransition = async (update: () => void | Promise<void>) => {
-    const doc = typeof document !== "undefined" ? (document as ViewTransitionDocument) : null;
-    if (doc?.startViewTransition && !prefersReducedMotion()) {
-      try {
-        const transition = doc.startViewTransition(update);
-        await transition.finished;
-        return;
-      } catch (err) {
-        console.warn("No se pudo aplicar la transicion de roles:", err);
-      }
-    }
-    await update();
-  };
-
-  const extractError = (err: unknown) => {
-    if (typeof err === "string") {
-      return err;
-    }
-    if (err && typeof err === "object") {
-      const record = err as Record<string, unknown>;
-      return String(record.error ?? record.message ?? "Error desconocido");
-    }
-    return "Error desconocido";
-  };
-
-  const syncStickyState = () => {
-    if (!stickySentinel) {
-      stickyStackPinned = false;
-      return;
-    }
-
-    stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
-  };
-
-  const syncStickyStackHeight = () => {
-    stickyStackHeight = stickyStack?.offsetHeight ?? 0;
-  };
+  const runRoleTransition = (update: () => void | Promise<void>) =>
+    runViewTransition(update, "No se pudo aplicar la transicion de roles:");
 
   const entityDescription = (entityId: number) =>
     entities.find((entity) => entity.Id === entityId)?.Description ?? "Sin detalle para esta tabla.";
@@ -127,7 +85,7 @@
       }
       return true;
     } catch (err) {
-      const message = extractError(err);
+      const message = getErrorMessage(err);
       showToast(`No se pudieron actualizar los roles: ${message}`, "error");
       return false;
     } finally {
@@ -408,85 +366,35 @@
     }))
   );
 
-  onMount(() => {
-    syncStickyStackHeight();
-    syncStickyState();
-
-    if (typeof ResizeObserver === "undefined" || !stickyStack) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      syncStickyStackHeight();
-    });
-    observer.observe(stickyStack);
-
-    return () => {
-      observer.disconnect();
-    };
-  });
-
-  $: if (stickySentinel) {
-    syncStickyState();
-  }
-  $: if (stickyStack) {
-    syncStickyStackHeight();
-  }
 </script>
 
-<svelte:window on:scroll={syncStickyState} on:resize={syncStickyState}/>
-
-<section class="roles-tab" style={`--roles-sticky-total-height: ${stickyStackHeight}px;`}>
-  <div class="roles-sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
-  <div
-    class:roles-sticky-stack={true}
-    class:roles-sticky-stack--pinned={stickyStackPinned}
-    bind:this={stickyStack}
-  >
-
+<section class="roles-tab roles-studio">
+  <StickyStack>
     {#if currentRole}
-      <header class="role-hero" style={`view-transition-name: role-hero-${currentRole.Id};`}>
-        <div class="role-hero__copy">
-          <div class="role-hero__title-row">
-            <h2>{currentRole.Name}</h2>
-            <div class="role-pager">
-              <button class="control control--icon control--soft" on:click={prevRole} aria-label="Rol anterior" disabled={roles.length <= 1 || busySection !== null}>
-                <ButtonIcon name="chevron-left"/>
-              </button>
-              <span>{roles.findIndex((role) => role.Id === currentRole.Id) + 1} / {roles.length}</span>
-              <button class="control control--icon control--soft" on:click={nextRole} aria-label="Rol siguiente" disabled={roles.length <= 1 || busySection !== null}>
-                <ButtonIcon name="chevron-right"/>
-              </button>
-            </div>
-          </div>
-          <p>{currentRole.Description || "Usa este perfil para decidir qué tablas toca y qué procesos puede activar."}</p>
-        </div>
-
-        <div class="role-hero__side">
-          <div class="role-stats">
-            <div class="role-stat">
-              <span>Tablas con acceso</span>
-              <strong>{countGrantedTables(currentRole)}</strong>
-            </div>
-            <div class="role-stat">
-              <span>Checks activos</span>
-              <strong>{countGrantedChecks(currentRole)}</strong>
-            </div>
-            <div class="role-stat">
-              <span>Procesos habilitados</span>
-              <strong>{countGrantedProcesses(currentRole)}</strong>
-            </div>
+      <StudioToolbar 
+        title={currentRole.Name} 
+        description={currentRole.Description || "Usa este perfil para decidir qué tablas toca y qué procesos puede activar."}
+      >
+        {#snippet meta()}
+          <Badge>{countGrantedTables(currentRole)} tablas con acceso</Badge>
+          <Badge variant="quiet">{countGrantedChecks(currentRole)} checks activos</Badge>
+          <Badge variant="quiet">{countGrantedProcesses(currentRole)} procesos habilitados</Badge>
+        {/snippet}
+        {#snippet actions()}
+          <div class="entity-nav">
+            <Button variant="soft" size="icon" icon="chevron-left" disabled={roles.length <= 1 || busySection !== null} onclick={prevRole} aria-label="Rol anterior" />
+            <span style="font-size:12px;font-weight:600;min-width:32px;text-align:center;">{roles.findIndex((role) => role.Id === currentRole?.Id) + 1} / {roles.length}</span>
+            <Button variant="soft" size="icon" icon="chevron-right" disabled={roles.length <= 1 || busySection !== null} onclick={nextRole} aria-label="Rol siguiente" />
           </div>
 
-          <div class="role-actions">
+
             <ModalLauncher
               triggerLabel="Editar rol"
               title="Editar rol"
               confirmLabel="Guardar"
-              triggerVariant="edit"
+              triggerVariant="soft"
               confirmVariant="primary"
               size="form"
-              triggerClass="roles-modal-trigger roles-modal-trigger--hero"
               triggerDisabled={busySection !== null}
               onOpen={() => prepareRoleEdit(currentRole)}
               onSuccess={() => handleSaveRole(currentRole.Id)}
@@ -501,7 +409,7 @@
               </label>
               <label class="field">
                 <span>Descripcion</span>
-                <textarea rows="3" bind:value={roleDraftDescription} placeholder="Describe para quién sirve este rol." />
+                <textarea rows="3" bind:value={roleDraftDescription} placeholder="Describe para quién sirve este rol."></textarea>
               </label>
             </ModalLauncher>
 
@@ -509,10 +417,9 @@
               triggerLabel="Procesos"
               title="Permisos de procesos"
               confirmLabel="Guardar permisos"
-              triggerVariant="primary"
+              triggerVariant="soft"
               confirmVariant="primary"
               size="form"
-              triggerClass="roles-modal-trigger roles-modal-trigger--hero"
               triggerDisabled={busySection !== null || !processCatalog.length}
               onOpen={() => prepareProcessPermissions(currentRole)}
               onSuccess={handleSaveProcessPermissions}
@@ -532,14 +439,12 @@
                           <p>{group.description || "Macroproceso sin descripcion."}</p>
                         </div>
                         <div class="process-modal-group__actions">
-                          <button type="button" class="control control--soft control--sm" on:click={() => setProcessGroupDraft(group, true)}>
-                            <ButtonIcon name="check"/>
-                            <span>Todo</span>
-                          </button>
-                          <button type="button" class="control control--ghost control--sm" on:click={() => setProcessGroupDraft(group, false)}>
-                            <ButtonIcon name="clear"/>
-                            <span>Ninguno</span>
-                          </button>
+                          <Button variant="soft" size="sm" icon="check" onclick={() => setProcessGroupDraft(group, true)}>
+                            Todo
+                          </Button>
+                          <Button variant="ghost" size="sm" icon="clear" onclick={() => setProcessGroupDraft(group, false)}>
+                            Ninguno
+                          </Button>
                         </div>
                       </div>
                       <div class="process-modal-list">
@@ -575,20 +480,18 @@
               triggerLabel="Eliminar rol"
               title="Eliminar rol"
               confirmLabel="Eliminar"
-              triggerVariant="danger"
+              triggerVariant="soft"
               confirmVariant="danger"
               size="default"
-              triggerClass="roles-modal-trigger roles-modal-trigger--hero"
               triggerDisabled={busySection !== null}
               onSuccess={() => handleRemoveRole(currentRole.Id)}
             >
               <p class="modal-hint local-modal-hint">Se eliminara <strong>{currentRole.Name}</strong> con todos sus permisos asociados.</p>
             </ModalLauncher>
-          </div>
-        </div>
-      </header>
+        {/snippet}
+      </StudioToolbar>
     {/if}
-  </div>
+  </StickyStack>
 
   <div class="roles-shell">
     <aside class="roles-rail">
@@ -620,7 +523,7 @@
           </label>
           <label class="field">
             <span>Descripcion</span>
-            <textarea rows="3" bind:value={newRoleDescription} placeholder="Explica el alcance funcional del rol." />
+            <textarea rows="3" bind:value={newRoleDescription} placeholder="Explica el alcance funcional del rol."></textarea>
           </label>
         </ModalLauncher>
       </div>
@@ -666,16 +569,14 @@
 
           {#if entities.length}
             <div class="permission-matrix-wrap">
-              <table class="permission-matrix">
-                <thead>
-                  <tr>
-                    <th>Tabla</th>
-                    {#each permissionColumns as column}
-                      <th title={column.hint}>{column.label}</th>
-                    {/each}
-                  </tr>
-                </thead>
-                <tbody>
+              <Table class="permission-matrix">
+                {#snippet header()}
+                  <th>Tabla</th>
+                  {#each permissionColumns as column}
+                    <th title={column.hint}>{column.label}</th>
+                  {/each}
+                {/snippet}
+                {#snippet body()}
                   {#each entities as entity, index (entity.Id)}
                     <tr
                       in:fade={{duration: 180, delay: index * 12}}
@@ -707,759 +608,22 @@
                       {/each}
                     </tr>
                   {/each}
-                </tbody>
-              </table>
+                {/snippet}
+              </Table>
             </div>
           {:else}
-            <div class="roles-empty">
-              <strong>No hay tablas para mapear</strong>
-              <p>Crea entidades primero y luego decide qué puede hacer cada rol con ellas.</p>
-            </div>
+            <EmptyPanel 
+              message="No hay tablas para mapear" 
+              resolution="Crea entidades primero y luego decide qué puede hacer cada rol con ellas." 
+            />
           {/if}
         </section>
       {:else}
-        <div class="roles-empty roles-empty--stage">
-          <strong>Crea el primer rol para abrir la matriz</strong>
-          <p>La pestaña esta lista para modelar permisos por tabla y por proceso, pero necesita al menos un perfil.</p>
-        </div>
+        <EmptyPanel 
+          message="Crea el primer rol para abrir la matriz" 
+          resolution="La pestaña esta lista para modelar permisos por tabla y por proceso, pero necesita al menos un perfil." 
+        />
       {/if}
     </section>
   </div>
 </section>
-
-<style>
-  .roles-tab {
-    --roles-sticky-total-height: 0px;
-    display: grid;
-    gap: 1rem;
-  }
-
-  .roles-sticky-stack {
-    display: grid;
-    gap: 1rem;
-    margin-bottom: 18px;
-  }
-
-  .roles-sticky-stack--pinned {
-    position: sticky;
-    top: 0;
-    z-index: calc(var(--layer-ribbon, 100) - 2);
-    background: var(--surface-strong);
-  }
-
-  .roles-sticky-sentinel {
-    height: 1px;
-    margin-top: -1px;
-  }
-
-  .roles-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: end;
-    gap: 1rem;
-    padding: 1rem 1.1rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-lg) - 8px);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 98%, var(--surface)), color-mix(in srgb, var(--surface) 100%, var(--surface-strong))),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, var(--surface-strong)), transparent 36%);
-    box-shadow: var(--shadow-sm);
-    backdrop-filter: blur(18px);
-    position: relative;
-    overflow: clip;
-  }
-
-  .roles-toolbar .label,
-  .roles-toolbar .muted {
-    margin: 0;
-  }
-
-  .roles-toolbar::before,
-  .role-hero::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: min(220px, 42%);
-    height: 1px;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 34%, transparent), transparent);
-    pointer-events: none;
-  }
-
-  .roles-toolbar__meta {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.55rem;
-  }
-
-  .roles-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 2rem;
-    padding: 0 0.82rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.8rem;
-    font-weight: 800;
-  }
-
-  .roles-chip--quiet {
-    border-color: var(--border);
-    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
-    color: var(--ink-soft);
-  }
-
-  .roles-shell {
-    display: grid;
-    grid-template-columns: minmax(17rem, 0.82fr) minmax(0, 1.42fr);
-    gap: 1rem;
-    align-items: start;
-  }
-
-  .roles-rail,
-  .roles-stage {
-    position: relative;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-lg) - 8px);
-    background: color-mix(in srgb, var(--surface-strong) 95%, transparent);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .roles-rail {
-    position: sticky;
-    top: calc(var(--roles-sticky-total-height, 0px) + 1rem);
-    align-self: start;
-    display: grid;
-    gap: 0.95rem;
-    padding: 1rem;
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, transparent), color-mix(in srgb, var(--surface) 90%, transparent)),
-      radial-gradient(circle at top, color-mix(in srgb, var(--accent) 12%, transparent), transparent 44%);
-  }
-
-  .roles-stage {
-    display: grid;
-    gap: 1rem;
-    padding: 1.05rem;
-    background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 14%, transparent), transparent 32%),
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 97%, transparent), color-mix(in srgb, var(--surface) 89%, transparent));
-  }
-
-  .roles-rail__head {
-    display: grid;
-    gap: 0.82rem;
-  }
-
-  .roles-rail__head h3,
-  .permission-panel__head h3,
-  .role-hero__copy h2 {
-    margin: 0.18rem 0 0;
-    line-height: 0.98;
-  }
-
-  .roles-rail__hint,
-  .permission-panel__head p:last-child,
-  .role-hero__copy p:last-child {
-    margin: 0.38rem 0 0;
-    color: var(--ink-soft);
-    line-height: 1.5;
-  }
-
-  .role-list {
-    display: grid;
-    gap: 0.7rem;
-  }
-
-  .role-card {
-    position: relative;
-    display: grid;
-    gap: 0.26rem;
-    padding: 0.9rem 0.95rem 0.96rem 1.05rem;
-    border-radius: calc(var(--radius-md) - 10px);
-    border: 1px solid var(--border);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 98%, transparent), color-mix(in srgb, var(--surface) 86%, transparent));
-    text-align: left;
-    transition:
-      transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 180ms ease,
-      box-shadow 180ms ease;
-  }
-
-  .role-card::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 4px;
-    border-radius: 999px;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, white 12%), color-mix(in srgb, var(--accent-strong) 78%, transparent));
-    opacity: 0.28;
-  }
-
-  .role-card:hover,
-  .role-card--active {
-    transform: translateX(6px);
-    border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
-    box-shadow:
-      0 20px 32px color-mix(in srgb, var(--ink) 10%, transparent),
-      0 0 0 0.16rem color-mix(in srgb, var(--accent) 10%, transparent);
-  }
-
-  .role-card__index {
-    color: var(--ink-faint);
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.15em;
-  }
-
-  .role-card :global(.button-glyph) {
-    color: var(--accent-strong);
-    opacity: 0.86;
-  }
-
-  .role-card strong {
-    font-size: 1rem;
-    line-height: 1.18;
-  }
-
-  .role-card__meta,
-  .role-card__hint {
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    line-height: 1.42;
-  }
-
-  .role-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1.05fr) auto;
-    gap: 1rem;
-    padding: 1.1rem 1.15rem;
-    border-radius: calc(var(--radius-lg) - 10px);
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-    background:
-      linear-gradient(130deg, color-mix(in srgb, var(--surface-strong) 99%, var(--surface)), color-mix(in srgb, var(--surface) 96%, var(--surface-strong))),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, var(--surface-strong)), transparent 48%);
-    backdrop-filter: blur(18px);
-  }
-
-  .role-hero__title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.9rem;
-    flex-wrap: wrap;
-  }
-
-  .role-hero__side {
-    display: grid;
-    gap: 0.85rem;
-    align-content: start;
-  }
-
-  .role-stats {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(6.6rem, 1fr));
-    gap: 0.65rem;
-  }
-
-  .role-stat {
-    display: grid;
-    gap: 0.28rem;
-    padding: 0.82rem 0.88rem;
-    border-radius: 1rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 20%, transparent);
-  }
-
-  .role-stat span {
-    color: var(--ink-faint);
-    font-size: 0.73rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .role-stat strong {
-    font-size: 1.28rem;
-    line-height: 1;
-  }
-
-  .role-pager {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.42rem;
-    padding: 0.3rem 0.38rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
-  }
-
-  .role-pager span {
-    min-width: 3.7rem;
-    text-align: center;
-    color: var(--ink-soft);
-    font-size: 0.8rem;
-    font-weight: 800;
-  }
-
-  .role-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.55rem;
-  }
-
-  :global(.roles-modal-trigger) {
-    width: 100%;
-    justify-content: center;
-  }
-
-  :global(.roles-modal-trigger--rail),
-  :global(.roles-modal-trigger--hero) {
-    width: auto;
-  }
-
-  .permission-panel {
-    display: grid;
-    gap: 0.9rem;
-  }
-
-  .permission-panel__head {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    align-items: end;
-  }
-
-  .permission-panel__hint {
-    display: inline-flex;
-    align-items: center;
-    min-height: 2rem;
-    padding: 0 0.8rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.8rem;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-
-  .permission-matrix-wrap {
-    overflow: auto;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--panel-surface-strong);
-    max-height: calc(100vh - var(--roles-sticky-total-height, 0px) - 20rem);
-    scrollbar-gutter: stable;
-  }
-
-  .permission-matrix {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 42rem;
-  }
-
-  .permission-matrix th,
-  .permission-matrix td {
-    padding: 0.92rem 0.88rem;
-    border-bottom: 1px solid var(--line-soft);
-    vertical-align: middle;
-  }
-
-  .permission-matrix th {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: var(--surface-strong);
-    color: var(--ink-faint);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    text-align: center;
-    border-bottom: 2px solid var(--border);
-    box-shadow: inset 0 -1px 0 var(--line-soft);
-  }
-
-  .permission-matrix th:first-child {
-    border-top-left-radius: var(--radius-sm);
-  }
-
-  .permission-matrix th:last-child {
-    border-top-right-radius: var(--radius-sm);
-  }
-
-  .permission-matrix tbody tr:last-child td:first-child {
-    border-bottom-left-radius: var(--radius-sm);
-  }
-
-  .permission-matrix tbody tr:last-child td:last-child {
-    border-bottom-right-radius: var(--radius-sm);
-  }
-
-  .permission-matrix th:first-child,
-  .permission-matrix td:first-child {
-    text-align: left;
-    width: 15.5rem;
-    min-width: 15.5rem;
-  }
-
-  .permission-matrix tbody tr:hover {
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
-  }
-
-  .table-cell {
-    display: grid;
-    gap: 0.18rem;
-  }
-
-  .table-cell strong {
-    font-size: 0.95rem;
-    line-height: 1.2;
-  }
-
-  .table-cell span {
-    color: var(--ink-soft);
-    font-size: 0.8rem;
-    line-height: 1.45;
-    max-width: 26ch;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .permission-toggle {
-    position: relative;
-    display: inline-grid;
-    place-items: center;
-    width: 100%;
-    cursor: pointer;
-  }
-
-  .permission-toggle input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .permission-toggle__box {
-    width: 2.15rem;
-    height: 2.15rem;
-    display: inline-grid;
-    place-items: center;
-    border-radius: 0.85rem;
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
-    transition:
-      transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 170ms ease,
-      background 170ms ease,
-      box-shadow 170ms ease;
-  }
-
-  .permission-toggle__box svg {
-    width: 1rem;
-    height: 1rem;
-    fill: currentColor;
-    opacity: 0;
-    transform: scale(0.76);
-    transition: transform 150ms ease, opacity 150ms ease;
-  }
-
-  .permission-toggle--r input:checked + .permission-toggle__box {
-    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-    background: color-mix(in srgb, var(--accent) 13%, var(--surface-strong));
-    color: var(--accent-strong);
-  }
-
-  .permission-toggle--c input:checked + .permission-toggle__box {
-    border-color: color-mix(in srgb, var(--success) 26%, var(--border));
-    background: color-mix(in srgb, var(--success) 14%, var(--surface-strong));
-    color: var(--success);
-  }
-
-  .permission-toggle--u input:checked + .permission-toggle__box {
-    border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
-    background: color-mix(in srgb, var(--accent) 18%, var(--surface-strong));
-    color: var(--accent-strong);
-  }
-
-  .permission-toggle--d input:checked + .permission-toggle__box {
-    border-color: color-mix(in srgb, var(--danger) 26%, var(--border));
-    background: color-mix(in srgb, var(--danger) 14%, var(--surface-strong));
-    color: var(--danger);
-  }
-
-  .permission-toggle input:checked + .permission-toggle__box {
-    transform: translateY(-1px) scale(1.02);
-    box-shadow:
-      0 10px 18px color-mix(in srgb, var(--ink) 8%, transparent),
-      inset 0 1px 0 color-mix(in srgb, white 34%, transparent);
-  }
-
-  .permission-toggle input:checked + .permission-toggle__box svg {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  .permission-toggle input:focus-visible + .permission-toggle__box {
-    outline: none;
-    box-shadow:
-      0 0 0 0.2rem color-mix(in srgb, var(--accent) 14%, transparent),
-      inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
-  }
-
-  .process-modal-groups {
-    display: grid;
-    gap: 0.9rem;
-  }
-
-  .process-modal-group {
-    display: grid;
-    gap: 0.7rem;
-    padding: 0.95rem;
-    border-radius: 1.1rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
-  }
-
-  .process-modal-group__head {
-    display: flex;
-    justify-content: space-between;
-    align-items: start;
-    gap: 0.8rem;
-  }
-
-  .process-modal-group__head strong {
-    display: block;
-    font-size: 0.96rem;
-  }
-
-  .process-modal-group__head p {
-    margin: 0.32rem 0 0;
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    line-height: 1.45;
-  }
-
-  .process-modal-group__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-  }
-
-  .process-modal-list {
-    display: grid;
-    gap: 0.58rem;
-  }
-
-  .process-permission-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.8rem;
-    align-items: center;
-    padding: 0.82rem 0.88rem;
-    border-radius: 0.95rem;
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-  }
-
-  .process-permission-row__copy {
-    display: grid;
-    gap: 0.16rem;
-  }
-
-  .process-permission-row__copy strong {
-    font-size: 0.92rem;
-  }
-
-  .process-permission-row__copy span {
-    color: var(--ink-soft);
-    font-size: 0.8rem;
-    line-height: 1.42;
-  }
-
-  .process-permission-row__toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
-  .process-permission-row__toggle input {
-    width: 1.05rem;
-    height: 1.05rem;
-    accent-color: var(--accent);
-  }
-
-  .roles-empty {
-    display: grid;
-    place-items: center;
-    gap: 0.35rem;
-    min-height: 12rem;
-    padding: 1.2rem;
-    text-align: center;
-    border-radius: calc(var(--radius-md) - 8px);
-    border: 1px dashed color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
-    color: var(--ink-soft);
-  }
-
-  .roles-empty strong {
-    color: var(--ink);
-    font-size: 1rem;
-  }
-
-  .roles-empty p {
-    margin: 0;
-    line-height: 1.55;
-  }
-
-  .roles-empty--rail {
-    min-height: 10rem;
-  }
-
-  .roles-empty--stage {
-    min-height: 30rem;
-  }
-
-  .roles-empty--modal {
-    min-height: 8rem;
-  }
-
-  .field {
-    display: grid;
-    gap: 0.38rem;
-  }
-
-  .field span {
-    font-size: 0.79rem;
-    font-weight: 800;
-    color: var(--ink-soft);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-
-  .field input,
-  .field textarea {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
-    color: var(--ink);
-    padding: 0.8rem 0.92rem;
-    box-sizing: border-box;
-    resize: vertical;
-    transition:
-      border-color 160ms ease,
-      box-shadow 160ms ease,
-      transform 160ms ease,
-      background 160ms ease;
-  }
-
-  .field input:focus,
-  .field textarea:focus {
-    outline: none;
-    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-    box-shadow: 0 0 0 0.22rem color-mix(in srgb, var(--accent) 14%, transparent);
-    transform: translateY(-1px);
-    background: color-mix(in srgb, var(--surface-strong) 98%, transparent);
-  }
-
-  .modal-intro {
-    display: grid;
-    gap: 0.3rem;
-    padding-bottom: 0.35rem;
-  }
-
-  .local-modal-kicker,
-  .local-modal-hint {
-    margin: 0;
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  @media (max-width: 1240px) {
-    .roles-shell {
-      grid-template-columns: 1fr;
-    }
-
-    .roles-rail {
-      position: static;
-    }
-
-    .role-hero {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 920px) {
-    .roles-toolbar,
-    .permission-panel__head,
-    .process-modal-group__head,
-    .process-permission-row {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .roles-toolbar__meta,
-    .role-actions {
-      justify-content: flex-start;
-    }
-
-    .role-stats {
-      grid-template-columns: 1fr;
-    }
-
-    :global(.roles-modal-trigger--rail),
-    :global(.roles-modal-trigger--hero) {
-      width: 100%;
-    }
-  }
-
-  @media (max-width: 720px) {
-    .role-hero__title-row {
-      align-items: stretch;
-    }
-
-    .role-pager {
-      justify-content: space-between;
-    }
-
-    .permission-matrix {
-      min-width: 44rem;
-    }
-
-    .process-modal-group__actions,
-    .role-actions {
-      flex-direction: column;
-      align-items: stretch;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .role-card,
-    .permission-toggle__box {
-      transition: none;
-    }
-  }
-</style>

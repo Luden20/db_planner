@@ -145,7 +145,7 @@
         rows="3"
         placeholder="Breve contexto o notas opcionales"
         bind:value={description}
-      />
+      ></textarea>
     </div>
 
     {#if error}

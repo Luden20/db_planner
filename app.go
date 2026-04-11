@@ -363,14 +363,6 @@ func (a *App) GenerateSQLFromEntities(entityIds []int, intersectionIds []int, da
 		return nil, fmt.Errorf("selecciona una base de datos destino")
 	}
 
-	settings, err := utils.LoadAppConfig()
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(settings.OpenAIAPIKey) == "" {
-		return nil, fmt.Errorf("configura una API key de OpenAI antes de generar SQL")
-	}
-
 	project, err := a.GetActualProject()
 	if err != nil {
 		return nil, err
@@ -387,20 +379,40 @@ func (a *App) GenerateSQLFromEntities(entityIds []int, intersectionIds []int, da
 	}
 	exportJSON := string(exportJSONBytes)
 
-	sqlCode, err := generateSQLWithOpenAI(exportJSON, targetDatabase, settings.OpenAIModel, settings.OpenAIAPIKey)
+	generatedScript, err := generateCodeScript(exportData, targetDatabase)
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(sqlCode) == "" {
-		return nil, fmt.Errorf("la IA no devolvió código SQL")
+
+	settings, err := utils.LoadAppConfig()
+	if err != nil {
+		return nil, err
 	}
 
-	return &utils.SQLGenerationResult{
-		Database:   targetDatabase,
-		Model:      settings.OpenAIModel,
-		SQL:        strings.TrimSpace(sqlCode),
-		ExportJSON: exportJSON,
-	}, nil
+	result := &utils.SQLGenerationResult{
+		Database:        targetDatabase,
+		Model:           settings.OpenAIModel,
+		GeneratedScript: strings.TrimSpace(generatedScript),
+		ExportJSON:      exportJSON,
+	}
+
+	if strings.TrimSpace(settings.OpenAIAPIKey) == "" {
+		result.AIError = "No se generó SQL con IA porque no hay API key configurada."
+		return result, nil
+	}
+
+	sqlCode, err := generateSQLWithOpenAI(exportJSON, targetDatabase, settings.OpenAIModel, settings.OpenAIAPIKey)
+	if err != nil {
+		result.AIError = err.Error()
+		return result, nil
+	}
+	if strings.TrimSpace(sqlCode) == "" {
+		result.AIError = "La IA no devolvió código SQL."
+		return result, nil
+	}
+
+	result.SQL = strings.TrimSpace(sqlCode)
+	return result, nil
 }
 
 func buildSchemaExport(project *utils.DbProject, entityIds []int, intersectionIds []int) (*schemaExportData, error) {
@@ -700,6 +712,15 @@ func (a *App) MoveStep(bigProcessID int, processID int, stepID int, direction st
 		return err
 	}
 	return prj.MoveStep(bigProcessID, processID, stepID, direction)
+}
+
+func (a *App) AnalyzeDependencies() (*utils.AnalysisReport, error) {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return nil, err
+	}
+	report := prj.AnalyzeProjectDependencies()
+	return &report, nil
 }
 
 func (a *App) AddResource(bigProcessID int, processID int, stepID int, tableID int, role string) error {

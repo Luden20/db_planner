@@ -9,10 +9,17 @@
     MarkEntityStatus,
     RemoveRelation
   } from "../../wailsjs/go/main/App";
-  import ButtonIcon from "./ButtonIcon.svelte";
   import EntityFocusCard from "./EntityFocusCard.svelte";
   import CreateEntity from "./forms/CreateEntity.svelte";
+  import StudioToolbar from "./studio/StudioToolbar.svelte";
+  import StickyStack from "./studio/StickyStack.svelte";
+  import EmptyPanel from "./studio/EmptyPanel.svelte";
+  import Button from "./ui/Button.svelte";
+  import Table from "./ui/Table.svelte";
+  import RelationsTable from "./RelationsTable.svelte";
+  import Badge from "./ui/Badge.svelte";
   import {showToast} from "../lib/toast";
+  import {getErrorMessage, runViewTransition} from "../lib/ui-helpers";
 
   type RelationRow = {
     Id?: number;
@@ -26,11 +33,6 @@
     IdPrincipalEntity: number;
     Relations: RelationRow[];
   };
-  type ViewTransitionDocument = Document & {
-    startViewTransition?: (update: () => void | Promise<void>) => {
-      finished: Promise<void>;
-    };
-  };
 
   export let entities: utils.Entity[] = [];
   export let onRefresh: () => Promise<void> = async () => {};
@@ -40,10 +42,7 @@
   let activeIndex = 0;
   let lastSyncedFocusId: number | null = null;
   let currentPrincipalEntity: utils.Entity | null = null;
-  let stickySentinel: HTMLDivElement | null = null;
-  let stickyStack: HTMLDivElement | null = null;
   let stickyStackHeight = 0;
-  let stickyStackPinned = false;
   let currentRelationCount = 0;
   let approvedRelationCount = 0;
   let relationOptions: string[] = [];
@@ -100,37 +99,10 @@
     activeIndex = 0;
   }
 
-  const syncStickyStackHeight = () => {
-    stickyStackHeight = stickyStack?.offsetHeight ?? 0;
-  };
+  const runRelationTransition = (update: () => void | Promise<void>) =>
+    runViewTransition(update, "No se pudo aplicar la transicion de relaciones:");
 
-  const prefersReducedMotion = () =>
-    typeof window !== "undefined"
-    && typeof window.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  const runRelationTransition = async (update: () => void | Promise<void>) => {
-    const doc = typeof document !== "undefined" ? (document as ViewTransitionDocument) : null;
-    if (doc?.startViewTransition && !prefersReducedMotion()) {
-      try {
-        const transition = doc.startViewTransition(update);
-        await transition.finished;
-        return;
-      } catch (err) {
-        console.warn("No se pudo aplicar la transicion de relaciones:", err);
-      }
-    }
-    await update();
-  };
-
-  const syncStickyState = () => {
-    if (!stickySentinel) {
-      stickyStackPinned = false;
-      return;
-    }
-
-    stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
-  };
+  
 
   onMount(async () => {
     try {
@@ -143,20 +115,7 @@
       loadingOptions = false;
     }
     load();
-    syncStickyStackHeight();
-    syncStickyState();
-    if (typeof ResizeObserver === "undefined" || !stickyStack) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      syncStickyStackHeight();
-    });
-    observer.observe(stickyStack);
-
-    return () => {
-      observer.disconnect();
-    };
+    
   });
 
   $: if (activeIndex >= comb.length) {
@@ -172,12 +131,6 @@
   $: approvedRelationCount = comb[activeIndex]?.Relations?.filter(relation => isApprovedEntity(relation.IdEntity2)).length ?? 0;
   $: if (relationMenu.open && relationMenu.principalId !== comb[activeIndex]?.IdPrincipalEntity) {
     closeRelationMenu();
-  }
-  $: if (stickyStack) {
-    syncStickyStackHeight();
-  }
-  $: if (stickySentinel) {
-    syncStickyState();
   }
 
   const selectPrincipalIndex = async (nextIndex: number) => {
@@ -317,7 +270,7 @@
       await MarkEntityStatus(principalId, !isApprovedEntity(principalId));
       await onRefresh();
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      const message = getErrorMessage(err);
       showToast(`No se pudo actualizar la aprobación: ${message}`, "error");
     } finally {
       updating = false;
@@ -374,7 +327,7 @@
       applyOverrides();
       showToast(selection ? "Relación actualizada." : "Relación eliminada.", "success");
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      const message = getErrorMessage(err);
       showToast(`No se pudo actualizar la relación: ${message}`, "error");
     } finally {
       updating = false;
@@ -385,36 +338,28 @@
 <svelte:window
   on:click={closeRelationMenu}
   on:keydown={handleWindowKeydown}
-  on:scroll={() => {
-    closeRelationMenu();
-    syncStickyState();
-  }}
-  on:resize={syncStickyState}
+  on:scroll={closeRelationMenu}
 />
 
 <section class="relations-tab relations-studio" style={`--relations-sticky-total-height: ${stickyStackHeight}px;`}>
-  <div class="sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
-  <div class:sticky-stack={true} class:sticky-stack--pinned={stickyStackPinned} bind:this={stickyStack}>
-    <div class="tab-toolbar relations-toolbar">
-      <div class="relations-toolbar__copy">
-        <p class="label">Relaciones</p>
-        <p class="muted">Recorre el combinatorio por entidad principal y ajusta el cruce sin perder contexto.</p>
-      </div>
-      <div class="relations-toolbar__meta">
-        <span class="studio-chip">{comb.length} entidades</span>
-        <span class="studio-chip studio-chip--quiet">{currentRelationCount} relaciones activas</span>
-        <span class="studio-chip studio-chip--quiet">{approvedRelationCount} relacionadas aprobadas</span>
-      </div>
-      <div class="toolbar-actions relations-toolbar__actions">
+  <StickyStack bind:height={stickyStackHeight}>
+    <StudioToolbar 
+      title="Relaciones" 
+      description="Recorre el combinatorio por entidad principal y ajusta el cruce sin perder contexto."
+    >
+      {#snippet meta()}
+        <Badge>{comb.length} entidades</Badge>
+        <Badge variant="quiet">{currentRelationCount} relaciones activas</Badge>
+        <Badge variant="quiet">{approvedRelationCount} relacionadas aprobadas</Badge>
+      {/snippet}
+      {#snippet actions()}
         <div class="view-jumps">
-          <button class="control control--ghost" on:click={() => jumpToTab("entities")} disabled={!comb.length}>
-            <ButtonIcon name="database"/>
-            <span>Ir a definicion</span>
-          </button>
-          <button class="control control--accent" on:click={() => jumpToTab("tertiary")} disabled={!comb.length}>
-            <ButtonIcon name="attributes"/>
-            <span>Ir a atributos</span>
-          </button>
+          <Button variant="ghost" disabled={!comb.length} icon="database" onclick={() => jumpToTab("entities")}>
+            Ir a definicion
+          </Button>
+          <Button variant="accent" disabled={!comb.length} icon="attributes" onclick={() => jumpToTab("tertiary")}>
+            Ir a atributos
+          </Button>
         </div>
         <select
           class="entity-select"
@@ -427,20 +372,14 @@
           {/each}
         </select>
         <div class="entity-nav">
-          <button class="control control--icon control--soft" on:click={prevSlide} aria-label="Entidad anterior" disabled={comb.length <= 1}>
-            <ButtonIcon name="chevron-left"/>
-          </button>
-          <button class="control control--icon control--soft" on:click={nextSlide} aria-label="Entidad siguiente" disabled={comb.length <= 1}>
-            <ButtonIcon name="chevron-right"/>
-          </button>
+          <Button variant="soft" size="icon" icon="chevron-left" disabled={comb.length <= 1} onclick={prevSlide} aria-label="Entidad anterior" />
+          <Button variant="soft" size="icon" icon="chevron-right" disabled={comb.length <= 1} onclick={nextSlide} aria-label="Entidad siguiente" />
         </div>
-      </div>
-    </div>
-
-  </div>
-
+      {/snippet}
+    </StudioToolbar>
+  </StickyStack>
 {#if comb.length === 0}
-  <div class="empty-panel">Sin datos de relaciones.</div>
+  <EmptyPanel message="Sin datos de relaciones." />
 {:else}
   <div class="relations-layout">
     <aside class="relations-deck">
@@ -461,14 +400,14 @@
                 await onRefresh();
               }}
             />
-            <button
-              class={`control control--success ${isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? 'control--active' : ''}`}
-              on:click={togglePrincipalApproval}
+            <Button
+              variant={isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? 'active' : 'success'}
+              icon={isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "check-off" : "check"}
               disabled={updating}
+              onclick={togglePrincipalApproval}
             >
-              <ButtonIcon name={isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "check-off" : "check"}/>
-              <span>{isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "Quitar" : "Aprobar"}</span>
-            </button>
+              {isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "Quitar" : "Aprobar"}
+            </Button>
           </div>
         </EntityFocusCard>
       {/if}
@@ -488,61 +427,17 @@
             </div>
             <span class="slide-panel__hint">Auto-guardado</span>
           </div>
-          <div class="table-wrapper">
-            <table class="entities-table compact">
-              <tbody>
-              {#if comb[activeIndex].Relations && comb[activeIndex].Relations.length > 0}
-                {#each comb[activeIndex].Relations as relation}
-                  <tr
-                    class:approved-row={isApprovedEntity(relation.IdEntity2)}
-                    class:relation-row-menu-open={relationMenu.open && relationMenu.targetId === relation.IdEntity2}
-                    on:contextmenu|preventDefault|stopPropagation={(event) => openRelationMenu(relation, event)}
-                  >
-                    <td>
-                      <div class="relation-name-cell">
-                        <span>{relation.Entity2}</span>
-                        <span class="relation-info">
-                          <button
-                            type="button"
-                            class="info-trigger"
-                            aria-label="Ayuda de la relación"
-                            on:click|stopPropagation
-                          >
-                            <ButtonIcon name="eye"/>
-                          </button>
-                          <span class="relation-tooltip">
-                            {getEntityDefinition(relation.IdEntity2)}
-                          </span>
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <select
-                        class="relation-select"
-                        bind:value={relation.Relation}
-                        data-principal={relationIdentifiers(relation).principalId}
-                        data-relation-id={relationIdentifiers(relation).relationId}
-                        data-target={relationIdentifiers(relation).targetId}
-                        on:click|stopPropagation
-                        on:change={() => handleRelationChange(relation)}
-                        disabled={updating}
-                      >
-                        {#each relationOptions as option}
-                          <option value={option}>{option || "-"}</option>
-                        {/each}
-                      </select>
-                    </td>
-
-                  </tr>
-                {/each}
-              {:else}
-                <tr class="muted-row">
-                  <td colspan="5">Sin relaciones para esta entidad.</td>
-                </tr>
-              {/if}
-              </tbody>
-            </table>
-          </div>
+<RelationsTable
+            relations={comb[activeIndex].Relations}
+            {relationOptions}
+            {updating}
+            {relationMenu}
+            onRelationChange={handleRelationChange}
+            onContextMenu={openRelationMenu}
+            {isApprovedEntity}
+            {getEntityDefinition}
+            {relationIdentifiers}
+          />
         {/if}
       </article>
     </div>
@@ -557,631 +452,12 @@
     on:keydown|stopPropagation
   >
     <p class="context-title">{relationMenu.principalName} -> {relationMenu.targetName}</p>
-    <button class="menu-action control control--sm control--block control--accent" on:click={goToRelatedEntityAttributes}>
-      <ButtonIcon name="attributes"/>
-      <span>Ir a atributos</span>
-    </button>
-    <button class="menu-action control control--sm control--block control--ghost" on:click={goToRelatedEntityRelations}>
-      <ButtonIcon name="relations"/>
-      <span>Ir a esta relacion</span>
-    </button>
+    <Button class="menu-action" variant="accent" size="sm" icon="attributes" onclick={goToRelatedEntityAttributes}>
+      Ir a atributos
+    </Button>
+    <Button class="menu-action" variant="ghost" size="sm" icon="relations" onclick={goToRelatedEntityRelations}>
+      Ir a esta relacion
+    </Button>
   </div>
 {/if}
 </section>
-
-<style>
-  .relations-tab {
-    --relations-sticky-top: 0px;
-    --relations-sticky-gap: 0px;
-    --relations-sticky-total-height: 0px;
-  }
-
-  .sticky-stack {
-    z-index: 8;
-    display: grid;
-    gap: var(--relations-sticky-gap);
-    margin-bottom: 18px;
-  }
-
-  .sticky-stack--pinned {
-    position: sticky;
-    top: 0;
-  }
-
-  .sticky-sentinel {
-    height: 1px;
-    margin-top: -1px;
-  }
-
-  .tab-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: linear-gradient(135deg, rgba(11, 18, 31, 0.96), rgba(19, 29, 45, 0.96));
-    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(8px);
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-
-  .toolbar-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex: 1;
-    flex-wrap: wrap;
-  }
-
-  .view-jumps {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: stretch;
-    flex: 1 1 320px;
-  }
-
-  .entity-select {
-    border-radius: 10px;
-    background: rgba(21, 32, 46, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    color: #e8edf7;
-    padding: 10px 12px;
-    min-width: 220px;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-    appearance: none;
-    transition: border 140ms ease, box-shadow 140ms ease;
-  }
-
-  .entity-select:focus {
-    border-color: rgba(90, 209, 255, 0.8);
-    box-shadow: 0 0 0 2px rgba(90, 209, 255, 0.22);
-  }
-
-  .entity-nav {
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .label {
-    margin: 0;
-    color: #9ab5e4;
-    font-size: 12px;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-  }
-
-  .muted {
-    margin: 6px 0 0;
-    color: #cfd9e9;
-    opacity: 0.75;
-  }
-
-  .slide-shell {
-    display: block;
-  }
-
-  .slide {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    padding: 14px 14px 16px;
-    box-shadow: none;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-height: 220px;
-    position: relative;
-  }
-
-  .slide--approved {
-    border-color: rgba(102, 194, 108, 0.34);
-    box-shadow: inset 0 0 0 1px rgba(73, 150, 78, 0.18);
-  }
-
-  .table-wrapper {
-    overflow: visible;
-  }
-
-  .entities-table {
-    width: 100%;
-    border-collapse: collapse;
-    color: #e8edf7;
-  }
-
-  .entities-table td {
-    text-align: left;
-    padding: 10px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-    font-size: 13px;
-  }
-
-  .entities-table tbody tr:nth-child(odd) {
-    background: rgba(255, 255, 255, 0.025);
-  }
-
-  .entities-table tbody tr:nth-child(even) {
-    background: rgba(109, 216, 255, 0.045);
-  }
-
-  .entities-table tbody tr.approved-row {
-    background: rgba(76, 175, 80, 0.12);
-  }
-
-  .entities-table tbody tr:hover {
-    background: rgba(135, 202, 255, 0.1);
-  }
-
-  .entities-table tbody tr.relation-row-menu-open {
-    background: rgba(90, 209, 255, 0.16);
-    box-shadow: inset 0 0 0 1px rgba(90, 209, 255, 0.34);
-  }
-
-  .entities-table.compact td {
-    font-size: 13px;
-  }
-
-  .relation-name-cell {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .relation-info {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    flex-shrink: 0;
-  }
-
-  .info-trigger {
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.06);
-    color: #cfe2ff;
-    border-radius: 999px;
-    min-width: 30px;
-    height: 30px;
-    padding: 0 8px;
-    cursor: help;
-    font-size: 12px;
-    letter-spacing: 0.8px;
-    transition: background 140ms ease, border-color 140ms ease, transform 120ms ease;
-  }
-
-  .info-trigger:hover,
-  .info-trigger:focus-visible {
-    background: rgba(90, 209, 255, 0.14);
-    border-color: rgba(90, 209, 255, 0.28);
-    outline: none;
-  }
-
-  .relation-tooltip {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 8px);
-    width: min(260px, 70vw);
-    padding: 9px 10px;
-    border-radius: 10px;
-    background: rgba(10, 16, 27, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #d9e4f5;
-    font-size: 12px;
-    line-height: 1.4;
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
-    opacity: 0;
-    transform: translateY(-4px);
-    pointer-events: none;
-    transition: opacity 140ms ease, transform 140ms ease;
-    z-index: 4;
-  }
-
-  .relation-info:hover .relation-tooltip,
-  .relation-info:focus-within .relation-tooltip {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  .muted-row td {
-    background: rgba(255, 255, 255, 0.02);
-    color: #cfd9e9;
-    opacity: 0.8;
-    text-align: center;
-  }
-
-  .slide-meta {
-    margin-top: 8px;
-    text-align: center;
-    color: #cfd9e9;
-    opacity: 0.8;
-    font-size: 13px;
-    letter-spacing: 0.6px;
-  }
-
-  .counter {
-    display: inline-block;
-    padding: 6px 10px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .relation-select {
-    width: 100%;
-    min-width: 120px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: #0f1726;
-    color: #e8edf7;
-    padding: 8px 10px;
-    font-size: 13px;
-    outline: none;
-    transition: border 140ms ease, box-shadow 140ms ease;
-    appearance: none;
-  }
-
-  .relation-select:focus {
-    border-color: rgba(90, 209, 255, 0.8);
-    box-shadow: 0 0 0 2px rgba(90, 209, 255, 0.22);
-  }
-
-  .context-menu {
-    position: fixed;
-    z-index: 60;
-    min-width: 240px;
-    padding: 10px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: linear-gradient(135deg, rgba(15, 23, 38, 0.98), rgba(22, 34, 52, 0.98));
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
-    display: grid;
-    gap: 8px;
-  }
-
-  .context-title {
-    margin: 0;
-    padding: 4px 6px 8px;
-    color: #9ab5e4;
-    font-size: 12px;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-  }
-
-  @media (max-width: 720px) {
-    .relations-tab {
-      --relations-sticky-gap: 0px;
-    }
-
-    .tab-toolbar {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .toolbar-actions {
-      width: 100%;
-    }
-
-    .view-jumps {
-      width: 100%;
-    }
-
-    .entity-select {
-      min-width: 0;
-      width: 100%;
-    }
-
-  }
-
-  .tab-toolbar {
-    padding: 1.05rem 1.1rem;
-    border: 1px solid var(--border);
-    background: var(--panel-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .label,
-  .context-title {
-    color: var(--accent);
-    letter-spacing: 0.14em;
-  }
-
-  .label {
-    font-size: 0.74rem;
-    font-weight: 800;
-  }
-
-  .muted,
-  .counter {
-    color: var(--ink-faint);
-    opacity: 1;
-  }
-
-  .entity-select,
-  .relation-select {
-    border-color: var(--border);
-    background: var(--field-surface);
-    color: var(--ink);
-    box-shadow: none;
-  }
-
-  .entity-select:focus,
-  .relation-select:focus {
-    border-color: var(--focus-border);
-    box-shadow: var(--focus-ring);
-  }
-
-  .relation-name-cell,
-  .entities-table {
-    color: var(--ink);
-  }
-
-  .pill {
-    background: var(--chip-surface);
-    border-color: var(--line-soft);
-    color: var(--ink-soft);
-  }
-
-  .slide {
-    background: var(--panel-surface-strong);
-    border-color: var(--border);
-    border-radius: calc(var(--radius-md) - 4px);
-  }
-
-  .slide--approved {
-    border-color: rgba(61, 114, 81, 0.18);
-    box-shadow: inset 0 0 0 1px rgba(61, 114, 81, 0.08);
-  }
-
-  .table-wrapper {
-    background: var(--panel-surface-strong);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    max-height: calc(100vh - var(--relations-sticky-total-height, 0px) - 20rem);
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-    box-shadow: var(--surface-highlight);
-  }
-
-  .entities-table {
-    color: var(--ink);
-    border-collapse: collapse;
-    width: 100%;
-  }
-
-  .entities-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: var(--surface-strong);
-    color: var(--ink-faint);
-    border-bottom: 2px solid var(--border);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    text-align: left;
-    padding: 0.75rem 1rem;
-    box-shadow: inset 0 -1px 0 var(--line-soft);
-  }
-
-  .entities-table thead th:first-child {
-    border-top-left-radius: var(--radius-sm);
-  }
-
-  .entities-table thead th:last-child {
-    border-top-right-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:last-child td:first-child {
-    border-bottom-left-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:last-child td:last-child {
-    border-bottom-right-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:nth-child(odd),
-  .entities-table tbody tr:nth-child(even) {
-    background: transparent;
-  }
-
-  .entities-table tbody tr.approved-row {
-    background: var(--success-soft);
-  }
-
-  .entities-table tbody tr:hover,
-  .entities-table tbody tr.relation-row-menu-open {
-    background: var(--hover-soft);
-  }
-
-  .muted-row td {
-    background: color-mix(in srgb, var(--surface) 72%, transparent);
-    color: var(--ink-faint);
-  }
-
-  .info-trigger {
-    border-color: var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
-    color: var(--ink-faint);
-  }
-
-  .info-trigger:hover,
-  .info-trigger:focus-visible {
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
-    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-  }
-
-  .relation-tooltip {
-    background: var(--popover-surface);
-    border-color: var(--border);
-    color: var(--ink-soft);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .counter {
-    border-color: var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
-  }
-
-  .context-menu {
-    border-color: var(--border);
-    background: var(--popover-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .relations-studio {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .relations-layout {
-    display: grid;
-    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
-    align-items: start;
-    gap: 1rem;
-  }
-
-  .relations-deck {
-    display: grid;
-    gap: 1rem;
-    position: sticky;
-    top: calc(var(--relations-sticky-total-height) + 1rem);
-    align-self: start;
-  }
-
-  .relations-toolbar,
-  .slide-shell {
-    position: relative;
-    overflow: clip;
-  }
-
-  .relations-toolbar::before,
-  .slide-shell::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: min(220px, 42%);
-    height: 1px;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 36%, transparent), transparent);
-    pointer-events: none;
-  }
-
-  .relations-toolbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 0.9rem 1rem;
-  }
-
-  .relations-toolbar__copy {
-    max-width: 38rem;
-  }
-
-  .relations-toolbar__meta {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-  }
-
-  .relations-toolbar__actions {
-    grid-column: 1 / -1;
-  }
-
-  .studio-chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
-    padding: 0.42rem 0.78rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.76rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .studio-chip--quiet {
-    border-color: var(--line-soft);
-    background: color-mix(in srgb, var(--surface) 82%, transparent);
-    color: var(--ink-soft);
-  }
-
-  .slide-shell {
-    padding: 1rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-lg) - 2px);
-    background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 34%),
-      var(--panel-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .slide-panel__head {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 0.9rem;
-  }
-
-  .slide-panel__hint {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.5rem 0.8rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
-    border: 1px solid var(--line-soft);
-    color: var(--ink-soft);
-    font-size: 0.78rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .slide-meta {
-    display: flex;
-    justify-content: center;
-    margin-top: 0;
-  }
-
-  @media (max-width: 720px) {
-    .relations-layout {
-      grid-template-columns: 1fr;
-    }
-
-    .relations-deck {
-      position: static;
-    }
-
-    .relations-toolbar,
-    .slide-panel__head {
-      grid-template-columns: 1fr;
-      align-items: stretch;
-    }
-
-    .relations-toolbar__meta {
-      justify-content: flex-start;
-    }
-
-    .slide-shell {
-      padding: 0.9rem;
-    }
-
-    .slide-panel__hint,
-    .studio-chip {
-      white-space: normal;
-    }
-  }
-</style>

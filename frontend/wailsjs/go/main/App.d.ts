@@ -24,6 +24,8 @@ export function AddRoleTablePermission(arg1:number,arg2:number,arg3:boolean,arg4
 
 export function AddStep(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
 
+export function AnalyzeDependencies():Promise<utils.AnalysisReport>;
+
 export function CreateExcelPath():Promise<string>;
 
 export function CreateExcelPathWithoutRelations():Promise<string>;

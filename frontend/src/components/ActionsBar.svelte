@@ -18,29 +18,21 @@
   </div>
   <div class="action-buttons">
     <button class="btn primary" on:click={onSave}>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.414a2 2 0 0 0-.586-1.414l-3.414-3.414A2 2 0 0 0 15.586 3H5Zm10 2.5V8H5V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1Zm-10 6h14V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-5.5Z"/>
-      </svg>
+      <ButtonIcon name="save"/>
       <span>Guardar</span>
     </button>
     <div class="export-buttons">
       <button class="btn secondary" on:click={onExport}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3.5a.75.75 0 0 0-1.5 0V13a.75.75 0 0 0 1.5 0V3.5Zm-4.22 3.97a.75.75 0 0 0-1.06 1.06l4.5 4.5a.75.75 0 0 0 1.06 0l4.5-4.5a.75.75 0 0 0-1.06-1.06L12 10.94 7.78 7.47ZM4 15.75A2.75 2.75 0 0 1 6.75 13h10.5A2.75 2.75 0 0 1 20 15.75v2.5A2.75 2.75 0 0 1 17.25 21H6.75A2.75 2.75 0 0 1 4 18.25v-2.5Zm2.75-1.25a1.25 1.25 0 0 0-1.25 1.25v2.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-2.5c0-.69-.56-1.25-1.25-1.25H6.75Z"/>
-        </svg>
+        <ButtonIcon name="download"/>
         <span>Exportar con relaciones</span>
       </button>
       <button class="btn secondary" on:click={onExportWithoutRelations}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3.5a.75.75 0 0 0-1.5 0V13a.75.75 0 0 0 1.5 0V3.5Zm-4.22 3.97a.75.75 0 0 0-1.06 1.06l4.5 4.5a.75.75 0 0 0 1.06 0l4.5-4.5a.75.75 0 0 0-1.06-1.06L12 10.94 7.78 7.47ZM4 15.75A2.75 2.75 0 0 1 6.75 13h10.5A2.75 2.75 0 0 1 20 15.75v2.5A2.75 2.75 0 0 1 17.25 21H6.75A2.75 2.75 0 0 1 4 18.25v-2.5Zm2.75-1.25a1.25 1.25 0 0 0-1.25 1.25v2.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-2.5c0-.69-.56-1.25-1.25-1.25H6.75Z"/>
-        </svg>
+        <ButtonIcon name="download"/>
         <span>Exportar sin relaciones</span>
       </button>
     </div>
     <button class="btn danger" on:click={onExit}>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5.25 3A2.25 2.25 0 0 0 3 5.25v13.5A2.25 2.25 0 0 0 5.25 21h8.5A2.25 2.25 0 0 0 16 18.75V15.5a.75.75 0 0 0-1.5 0v3.25c0 .414-.336.75-.75.75h-8a.75.75 0 0 1-.75-.75V5.25c0-.414.336-.75.75-.75h8c.414 0 .75.336.75.75V9.5a.75.75 0 0 0 1.5 0V5.25A2.25 2.25 0 0 0 13.75 3h-8.5Zm11.53 6.22a.75.75 0 0 0-1.06 1.06l1.97 1.97H11.5a.75.75 0 0 0 0 1.5h6.19l-1.97 1.97a.75.75 0 1 0 1.06 1.06l3.25-3.25a.75.75 0 0 0 0-1.06l-3.25-3.25Z"/>
-      </svg>
+      <ButtonIcon name="exit"/>
       <span>Salir</span>
     </button>
   </div>

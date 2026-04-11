@@ -3,20 +3,21 @@
 
   export let name: string;
   export let entityCount: number;
-  export let activeTab: "entities" | "relations" | "roles" | "flows" | "tertiary";
+  export let activeTab: "home" | "entities" | "relations" | "roles" | "flows" | "tertiary";
   export let themeMode: "light" | "dark" = "light";
-  export let onSelect: (tab: "entities" | "relations" | "roles" | "flows" | "tertiary") => void = () => {};
+  export let onSelect: (tab: "home" | "entities" | "relations" | "roles" | "flows" | "tertiary") => void = () => {};
   export let onToggleTheme: () => void = () => {};
   export let onSave: () => Promise<void> = async () => {};
   export let onExport: () => void = () => {};
   export let onExportWithoutRelations: () => void = () => {};
-  export let onExportAI: () => void = () => {};
+  export let onExportScripts: () => void = () => {};
   export let onExit: () => void = () => {};
   let exportMenuOpen = false;
   let exportMenuEl: HTMLDivElement | null = null;
   let exportTriggerEl: HTMLButtonElement | null = null;
 
   const viewItems = [
+    {key: "home" as const, label: "Home", hint: "Sandbox libre", icon: "home" as const},
     {key: "entities" as const, label: "Entidades", hint: "Base del modelo", icon: "database" as const},
     {key: "relations" as const, label: "Relaciones", hint: "Cruces y tipos", icon: "relations" as const},
     {key: "tertiary" as const, label: "Atributos", hint: "Detalle por entidad", icon: "attributes" as const},
@@ -32,14 +33,14 @@
     exportMenuOpen = false;
   };
 
-  const handleExportAction = (mode: "full" | "plain" | "ai") => {
+  const handleExportAction = (mode: "full" | "plain" | "scripts") => {
     closeExportMenu();
     if (mode === "full") {
       onExport();
       return;
     }
-    if (mode === "ai") {
-      onExportAI();
+    if (mode === "scripts") {
+      onExportScripts();
       return;
     }
     onExportWithoutRelations();
@@ -124,9 +125,9 @@
                   <strong>Sin relaciones</strong>
                   <span>Combinaciones</span>
                 </button>
-                <button class="export-option export-option--ai" type="button" role="menuitem" on:click={() => handleExportAction("ai")}>
-                  <strong>@ SQL con IA</strong>
-                  <span>Seleccion de tablas + OpenAI</span>
+                <button class="export-option export-option--ai" type="button" role="menuitem" on:click={() => handleExportAction("scripts")}>
+                  <strong>Script SQL completo</strong>
+                  <span>DDL, relaciones, docs, inserts y salida IA opcional</span>
                 </button>
               </div>
             {/if}
@@ -390,7 +391,7 @@
 
   .view-strip {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 0.6rem;
   }
 

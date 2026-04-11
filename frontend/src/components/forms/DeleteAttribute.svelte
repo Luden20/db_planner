@@ -7,6 +7,7 @@
   export let relationId: number | null = null;
   export let attributeId: number;
   export let onSaved: () => Promise<void> = async () => {};
+  export let triggerClass = "";
 
   const handleRemove = async () => {
     try {
@@ -34,5 +35,6 @@
   confirmLabel="Eliminar"
   triggerVariant="danger"
   confirmVariant="danger"
+  {triggerClass}
   onSuccess={handleRemove}
 />

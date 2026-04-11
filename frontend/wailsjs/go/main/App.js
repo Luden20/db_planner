@@ -46,6 +46,10 @@ export function AddStep(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddStep'](arg1, arg2, arg3, arg4);
 }
 
+export function AnalyzeDependencies() {
+  return window['go']['main']['App']['AnalyzeDependencies']();
+}
+
 export function CreateExcelPath() {
   return window['go']['main']['App']['CreateExcelPath']();
 }

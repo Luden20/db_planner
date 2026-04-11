@@ -1,12 +1,19 @@
 <script lang="ts">
   import {onMount, tick} from "svelte";
   import type {utils} from "../../wailsjs/go/models";
-  import ButtonIcon from "./ButtonIcon.svelte";
+  import Button from "./ui/Button.svelte";
+  import Badge from "./ui/Badge.svelte";
+  import Toolbar from "./ui/Toolbar.svelte";
+  import SearchInput from "./ui/SearchInput.svelte";
+  import Table from "./ui/Table.svelte";
   import CreateEntity from "./forms/CreateEntity.svelte";
   import DeleteEntity from "./forms/DeleteEntity.svelte";
   import EditIntersectionEntity from "./forms/EditIntersectionEntity.svelte";
+  import ScopeSwitch from "./studio/ScopeSwitch.svelte";
+  import StickyStack from "./studio/StickyStack.svelte";
   import {MarkEntityStatus, MoveEntity, Save} from "../../wailsjs/go/main/App";
   import {showToast} from "../lib/toast";
+  import {createVerticalAutoScroller, getErrorMessage} from "../lib/ui-helpers";
 
   export let onSave: () => Promise<void> = async () => {};
   export let project: utils.DbProject;
@@ -16,8 +23,7 @@
   let tableWrapper: HTMLDivElement | null = null;
   let draggingIndex: number | null = null;
   let hoverIndex: number | null = null;
-  let autoScrollFrame: number | null = null;
-  let autoScrollDirection: -1 | 0 | 1 = 0;
+  let stickyStackHeight = 0;
   let searchQuery = "";
   let normalizedSearchQuery = "";
   let searchMatchIds: number[] = [];
@@ -42,11 +48,14 @@
     entityName: ""
   };
 
-  const AUTO_SCROLL_EDGE_PX = 72;
-  const AUTO_SCROLL_STEP = 14;
   const isApproved = (entity: utils.Entity) => entity.Status === true;
   const approvedCount = () => entities.filter((entity) => isApproved(entity)).length;
   const entityTypeLabel = (entity: utils.Entity) => entity.TableType === "intersection" ? "Interseccion" : "Fuerte";
+  const autoScroller = createVerticalAutoScroller({
+    edgePx: 72,
+    stepPx: 14,
+    getContainer: () => tableWrapper
+  });
   const normalizeSearchText = (value: string) =>
     value
       .normalize("NFD")
@@ -116,56 +125,7 @@
     cycleSearchMatch(event.shiftKey ? -1 : 1);
   };
 
-  const clearSearch = () => {
-    searchQuery = "";
-  };
-
-  const runAutoScroll = () => {
-    if (!tableWrapper || autoScrollDirection === 0) {
-      autoScrollFrame = null;
-      return;
-    }
-
-    tableWrapper.scrollTop += autoScrollDirection * AUTO_SCROLL_STEP;
-    autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
-  };
-
-  const startAutoScroll = (direction: -1 | 1) => {
-    if (autoScrollDirection === direction && autoScrollFrame !== null) {
-      return;
-    }
-
-    autoScrollDirection = direction;
-    if (autoScrollFrame === null) {
-      autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
-    }
-  };
-
-  const stopAutoScroll = () => {
-    autoScrollDirection = 0;
-    if (autoScrollFrame !== null) {
-      window.cancelAnimationFrame(autoScrollFrame);
-      autoScrollFrame = null;
-    }
-  };
-
-  const updateAutoScroll = (event: DragEvent) => {
-    if (!tableWrapper) {
-      return;
-    }
-
-    const bounds = tableWrapper.getBoundingClientRect();
-    if (event.clientY <= bounds.top + AUTO_SCROLL_EDGE_PX) {
-      startAutoScroll(-1);
-      return;
-    }
-    if (event.clientY >= bounds.bottom - AUTO_SCROLL_EDGE_PX) {
-      startAutoScroll(1);
-      return;
-    }
-
-    stopAutoScroll();
-  };
+  const updateAutoScroll = (event: DragEvent) => autoScroller.updateFromDragEvent(event);
 
   const startDrag = (index: number, event: DragEvent) => {
     closeContextMenu();
@@ -190,11 +150,11 @@
     if (tableWrapper && nextTarget && tableWrapper.contains(nextTarget)) {
       return;
     }
-    stopAutoScroll();
+    autoScroller.stop();
   };
 
   const clearDrag = () => {
-    stopAutoScroll();
+    autoScroller.stop();
     draggingIndex = null;
     hoverIndex = null;
   };
@@ -215,7 +175,7 @@
         await onSave();
       }
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      const message = getErrorMessage(err);
       showToast(`No se pudo reordenar la entidad: ${message}`, "error");
     }
   };
@@ -290,46 +250,18 @@
       await MarkEntityStatus(entity.Id, !isApproved(entity));
       await onSave();
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
+      const message = getErrorMessage(err);
       showToast(`No se pudo actualizar la aprobación: ${message}`, "error");
     }
-  };
-
-  let stickySentinel: HTMLDivElement | null = null;
-  let stickyStack: HTMLDivElement | null = null;
-  let stickyStackHeight = 0;
-  let stickyStackPinned = false;
-
-  const syncStickyState = () => {
-    if (!stickySentinel) {
-      stickyStackPinned = false;
-      return;
-    }
-    stickyStackPinned = stickySentinel.getBoundingClientRect().top <= 0;
-  };
-
-  const syncStickyStackHeight = () => {
-    stickyStackHeight = stickyStack?.offsetHeight ?? 0;
   };
 
   onMount(() => {
     const handleWindowBlur = () => closeContextMenu();
     window.addEventListener("blur", handleWindowBlur);
 
-    syncStickyStackHeight();
-    syncStickyState();
-
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined" && stickyStack) {
-      observer = new ResizeObserver(() => {
-        syncStickyStackHeight();
-      });
-      observer.observe(stickyStack);
-    }
-
     return () => {
+      autoScroller.stop();
       window.removeEventListener("blur", handleWindowBlur);
-      observer?.disconnect();
     };
   });
 
@@ -364,66 +296,37 @@
   $: if (activeSearchMatchId !== null && activeSearchMatchId !== lastScrolledMatchId) {
     focusSearchMatch(activeSearchMatchId);
   }
-  $: if (stickySentinel) {
-    syncStickyState();
-  }
-  $: if (stickyStack) {
-    syncStickyStackHeight();
-  }
 </script>
 
-<svelte:window on:click={closeContextMenu} on:keydown={handleWindowKeydown} on:scroll={() => { closeContextMenu(); syncStickyState(); }} on:resize={syncStickyState}/>
+<svelte:window on:click={closeContextMenu} on:keydown={handleWindowKeydown} on:scroll={closeContextMenu}/>
 
 <section class="entities-studio" style={`--entities-sticky-total-height: ${stickyStackHeight}px;`}>
-  <div class="entities-sticky-sentinel" bind:this={stickySentinel} aria-hidden="true"></div>
-  <div
-    class:entities-sticky-stack={true}
-    class:entities-sticky-stack--pinned={stickyStackPinned}
-    bind:this={stickyStack}
-  >
-    <div class="tab-toolbar tab-toolbar--studio">
-      <div>
-        <p class="label">Entidades</p>
-        <p class="muted">Gestiona entidades fuertes e intersecciones N:N desde el mismo estudio.</p>
-      </div>
-      <div class="entities-toolbar__side">
-        <div class="scope-switch" role="tablist" aria-label="Tipo de entidad">
-          <button
-            class={`scope-switch__item ${activeScope === 'strong' ? 'scope-switch__item--active' : ''}`}
-            type="button"
-            role="tab"
-            aria-selected={activeScope === "strong"}
-            on:click={() => switchScope("strong")}
-          >
-            Fuertes
-          </button>
-          <button
-            class={`scope-switch__item ${activeScope === 'intersection' ? 'scope-switch__item--active' : ''}`}
-            type="button"
-            role="tab"
-            aria-selected={activeScope === "intersection"}
-            on:click={() => switchScope("intersection")}
-          >
-            Intersección
-          </button>
-        </div>
-        <div class="entities-toolbar__meta">
-          <span class="studio-chip">{activeScope === "strong" ? entities.length : intersectionEntities.length} {activeScope === "strong" ? "fuertes" : "intersecciones"}</span>
-          {#if activeScope === "strong"}
-            <span class="studio-chip studio-chip--quiet">{approvedCount()} aprobadas</span>
-          {/if}
-          {#if normalizedSearchQuery && activeScope === "strong"}
-            <span class="studio-chip studio-chip--quiet">{searchMatchIds.length} coincidencias</span>
-          {:else if normalizedSearchQuery && activeScope === "intersection"}
-            <span class="studio-chip studio-chip--quiet">{filteredIntersectionEntities.length} coincidencias</span>
-          {/if}
-        </div>
+  <StickyStack bind:height={stickyStackHeight}>
+    <Toolbar 
+      title="Entidades" 
+      description="Gestiona entidades fuertes e intersecciones N:N desde el mismo estudio."
+      class="tab-toolbar--studio"
+    >
+      {#snippet meta()}
+        <Badge>{activeScope === "strong" ? entities.length : intersectionEntities.length} {activeScope === "strong" ? "fuertes" : "intersecciones"}</Badge>
+        {#if activeScope === "strong"}
+          <Badge variant="quiet">{approvedCount()} aprobadas</Badge>
+        {/if}
+        {#if normalizedSearchQuery && activeScope === "strong"}
+          <Badge variant="quiet">{searchMatchIds.length} coincidencias</Badge>
+        {:else if normalizedSearchQuery && activeScope === "intersection"}
+          <Badge variant="quiet">{filteredIntersectionEntities.length} coincidencias</Badge>
+        {/if}
+      {/snippet}
+
+      {#snippet actions()}
+        <ScopeSwitch {activeScope} onSwitch={switchScope}/>
         {#if activeScope === "strong"}
           <CreateEntity onSave={onSave}/>
         {/if}
-      </div>
-    </div>
-  </div>
+      {/snippet}
+    </Toolbar>
+  </StickyStack>
 
   <CreateEntity bind:this={createEntityModal} onSave={onSave} showTrigger={false}/>
 
@@ -435,22 +338,11 @@
           <p class="muted">Búsqueda rápida de entidades.</p>
         </div>
         <div class="search-toolbar__controls">
-          <div class="search-field">
-            <input
-              class="search-input"
-              type="search"
-              bind:value={searchQuery}
-              placeholder={activeScope === "strong" ? "Buscar entidad por nombre o descripción" : "Buscar intersección por nombre, descripción o relación"}
-              aria-label={activeScope === "strong" ? "Buscar entidad" : "Buscar entidad de intersección"}
-              on:keydown={handleSearchKeydown}
-            />
-            {#if searchQuery}
-              <button class="control control--sm control--ghost" on:click={clearSearch} aria-label="Limpiar búsqueda">
-                <ButtonIcon name="clear"/>
-                <span>Limpiar</span>
-              </button>
-            {/if}
-          </div>
+          <SearchInput
+            bind:value={searchQuery}
+            placeholder={activeScope === "strong" ? "Buscar entidad por nombre o descripción" : "Buscar intersección por nombre, descripción o relación"}
+            onkeydown={handleSearchKeydown}
+          />
 
           <div class="search-meta">
             {#if normalizedSearchQuery && activeScope === "strong"}
@@ -458,12 +350,8 @@
                 <span class="search-count">
                   {activeSearchMatchIndex + 1} de {searchMatchIds.length}
                 </span>
-                <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(-1)} aria-label="Coincidencia anterior">
-                  <ButtonIcon name="chevron-left"/>
-                </button>
-                <button class="control control--sm control--icon control--soft" on:click={() => cycleSearchMatch(1)} aria-label="Siguiente coincidencia">
-                  <ButtonIcon name="chevron-right"/>
-                </button>
+                <Button variant="soft" size="icon" icon="chevron-left" onclick={() => cycleSearchMatch(-1)} aria-label="Coincidencia anterior" />
+                <Button variant="soft" size="icon" icon="chevron-right" onclick={() => cycleSearchMatch(1)} aria-label="Siguiente coincidencia" />
               {:else}
                 <span class="search-empty">Sin coincidencias</span>
               {/if}
@@ -502,28 +390,25 @@
         </div>
       </div>
 
-      <div
-        class="table-wrapper"
-        bind:this={tableWrapper}
-        on:dragover={activeScope === "strong" ? handleTableDragOver : undefined}
-        on:dragleave={activeScope === "strong" ? handleTableDragLeave : undefined}
-        on:drop={activeScope === "strong" ? stopAutoScroll : undefined}
+      <Table
+        bind:ref={tableWrapper}
+        ondragover={activeScope === "strong" ? handleTableDragOver : undefined}
+        ondragleave={activeScope === "strong" ? handleTableDragLeave : undefined}
+        ondrop={activeScope === "strong" ? autoScroller.stop : undefined}
+        tableClass="draggable"
       >
-        <table class="entities-table">
-          <thead>
-          <tr>
-            <th>Nombre</th>
-            <th>Descripción</th>
-            {#if activeScope === "intersection"}
-              <th>Relación origen</th>
-              <th style="width: 160px;">Acciones</th>
-            {:else}
-              <th style="width: 240px;">Acciones</th>
-            {/if}
-          </tr>
-          </thead>
+        {#snippet header()}
+          <th>Nombre</th>
+          <th>Descripción</th>
+          {#if activeScope === "intersection"}
+            <th>Relación origen</th>
+            <th style="width: 160px;">Acciones</th>
+          {:else}
+            <th style="width: 240px;">Acciones</th>
+          {/if}
+        {/snippet}
 
-          <tbody class="draggable-body">
+        {#snippet body()}
           {#if activeScope === "strong"}
             {#each entities as entity, index (entity.Id)}
               <tr
@@ -554,13 +439,15 @@
                 <td>{entity.Description}</td>
                 <td>
                   <div class="row-actions">
-                    <button
-                      class={`control control--sm control--success ${isApproved(entity) ? 'control--active' : ''}`}
-                      on:click={() => toggleEntityApproval(entity)}
+                    <Button
+                      variant="success"
+                      size="sm"
+                      class={isApproved(entity) ? 'control--active' : ''}
+                      icon={isApproved(entity) ? "check-off" : "check"}
+                      onclick={() => toggleEntityApproval(entity)}
                     >
-                      <ButtonIcon name={isApproved(entity) ? "check-off" : "check"}/>
-                      <span>{isApproved(entity) ? "Quitar aprobación" : "Aprobar"}</span>
-                    </button>
+                      {isApproved(entity) ? "Quitar aprobación" : "Aprobar"}
+                    </Button>
                     <CreateEntity onSave={onSave} id={entity.Id}/>
                     <DeleteEntity onSave={onSave} id={entity.Id}/>
                   </div>
@@ -590,687 +477,36 @@
               </tr>
             {/each}
           {/if}
-          </tbody>
-        </table>
-      </div>
+        {/snippet}
+      </Table>
     </section>
   </div>
 </section>
 
 {#if contextMenu.open}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="context-menu"
     style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
+    role="menu"
+    tabindex="-1"
     on:click|stopPropagation
     on:keydown|stopPropagation
   >
     <p class="context-title">{contextMenu.entityName}</p>
-    <button class="menu-action control control--sm control--block control--accent" on:click={() => handleJumpFromContext("tertiary")}>
-      <ButtonIcon name="attributes"/>
-      <span>Ir a atributos</span>
-    </button>
-    <button class="menu-action control control--sm control--block control--accent" on:click={() => handleJumpFromContext("relations")}>
-      <ButtonIcon name="relations"/>
-      <span>Ir a relaciones</span>
-    </button>
+    <Button class="menu-action control--block" size="sm" variant="accent" icon="attributes" onclick={() => handleJumpFromContext("tertiary")}>
+      Ir a atributos
+    </Button>
+    <Button class="menu-action control--block" size="sm" variant="accent" icon="relations" onclick={() => handleJumpFromContext("relations")}>
+      Ir a relaciones
+    </Button>
     <div class="context-divider"></div>
-    <button class="menu-action control control--sm control--block control--ghost" on:click={() => handleInsertFromContext("above")}>
-      <ButtonIcon name="arrow-up"/>
-      <span>Insertar arriba</span>
-    </button>
-    <button class="menu-action control control--sm control--block control--ghost" on:click={() => handleInsertFromContext("below")}>
-      <ButtonIcon name="arrow-down"/>
-      <span>Insertar abajo</span>
-    </button>
+    <Button class="menu-action control--block" size="sm" variant="ghost" icon="arrow-up" onclick={() => handleInsertFromContext("above")}>
+      Insertar arriba
+    </Button>
+    <Button class="menu-action control--block" size="sm" variant="ghost" icon="arrow-down" onclick={() => handleInsertFromContext("below")}>
+      Insertar abajo
+    </Button>
   </div>
 {/if}
-
-<style>
-  .tab-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-
-  .label {
-    margin: 0;
-    color: #9ab5e4;
-    font-size: 12px;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-  }
-
-  .muted {
-    margin: 6px 0 0;
-    color: #cfd9e9;
-    opacity: 0.75;
-  }
-
-  .table-wrapper {
-    overflow: auto;
-    background: linear-gradient(135deg, rgba(18, 29, 44, 0.72), rgba(15, 23, 38, 0.92));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    padding: 8px;
-  }
-
-  .search-toolbar {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-    flex-wrap: wrap;
-  }
-
-  .search-field {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex: 1 1 320px;
-  }
-
-  .search-input {
-    width: 100%;
-    min-height: 48px;
-    border-radius: 12px;
-    border: 1px solid rgba(90, 209, 255, 0.22);
-    background: rgba(9, 15, 26, 0.7);
-    color: #e8edf7;
-    padding: 0 14px;
-    outline: none;
-    transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
-  }
-
-  .search-input::placeholder {
-    color: rgba(232, 237, 247, 0.5);
-  }
-
-  .search-input:focus {
-    border-color: rgba(90, 209, 255, 0.45);
-    box-shadow: 0 0 0 3px rgba(90, 209, 255, 0.16);
-    background: rgba(12, 20, 34, 0.9);
-  }
-
-  .search-meta {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .search-count,
-  .search-empty {
-    color: #cfe2ff;
-    font-size: 13px;
-  }
-
-  .entities-table {
-    width: 100%;
-    border-collapse: collapse;
-    color: #e8edf7;
-  }
-
-  .entities-table th,
-  .entities-table td {
-    text-align: left;
-    padding: 12px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-    font-size: 14px;
-  }
-
-  .entities-table thead th {
-    font-size: 13px;
-    color: #9ab5e4;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-  }
-
-  .entities-table tbody tr:nth-child(odd) {
-    background: rgba(255, 255, 255, 0.025);
-  }
-
-  .entities-table tbody tr:nth-child(even) {
-    background: rgba(109, 216, 255, 0.045);
-  }
-
-  .entities-table tbody tr:hover {
-    background: rgba(135, 202, 255, 0.1);
-  }
-
-  .entities-table tbody tr.approved:nth-child(odd),
-  .entities-table tbody tr.approved:nth-child(even) {
-    background: rgba(76, 175, 80, 0.14);
-  }
-
-  .entities-table tbody tr.approved:hover {
-    background: rgba(98, 201, 110, 0.2);
-  }
-
-  .entities-table tbody tr.search-match:nth-child(odd),
-  .entities-table tbody tr.search-match:nth-child(even) {
-    background: rgba(255, 196, 77, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(255, 196, 77, 0.22);
-  }
-
-  .entities-table tbody tr.search-match:hover {
-    background: rgba(255, 196, 77, 0.18);
-  }
-
-  .entities-table tbody tr.search-match-active:nth-child(odd),
-  .entities-table tbody tr.search-match-active:nth-child(even) {
-    background: rgba(255, 196, 77, 0.22);
-    box-shadow: inset 0 0 0 2px rgba(255, 211, 102, 0.62);
-  }
-
-  .draggable-body tr {
-    cursor: grab;
-    transition: background 120ms ease, transform 120ms ease, box-shadow 120ms ease;
-  }
-
-  .draggable-body tr.dragging {
-    opacity: 0.75;
-    background: rgba(255, 255, 255, 0.16);
-  }
-
-  .draggable-body tr.drag-hover {
-    background: rgba(90, 209, 255, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(90, 209, 255, 0.4);
-    transform: translateY(-1px);
-  }
-
-  .row-actions {
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  .entity-cell {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .status-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-  }
-
-  .status-pill--approved {
-    color: #dff7df;
-    background: rgba(76, 175, 80, 0.18);
-    border: 1px solid rgba(113, 201, 118, 0.35);
-    min-width: 30px;
-    justify-content: center;
-  }
-
-  .status-pill--type {
-    color: var(--accent-strong);
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
-    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-  }
-
-  .context-menu {
-    position: fixed;
-    z-index: 60;
-    min-width: 220px;
-    padding: 10px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: linear-gradient(135deg, rgba(15, 23, 38, 0.98), rgba(22, 34, 52, 0.98));
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
-    display: grid;
-    gap: 8px;
-  }
-
-  .context-title {
-    margin: 0;
-    padding: 4px 6px 8px;
-    color: #9ab5e4;
-    font-size: 12px;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-  }
-
-  .context-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.08);
-    margin: 2px 0;
-  }
-
-  @media (max-width: 720px) {
-    .tab-toolbar {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .search-toolbar {
-      align-items: stretch;
-    }
-
-    .search-field {
-      flex-wrap: wrap;
-    }
-  }
-
-  .tab-toolbar {
-    margin-bottom: 1rem;
-    padding: 1.1rem 1.15rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-md) - 4px);
-    background: var(--panel-surface);
-  }
-
-  .label {
-    color: var(--accent);
-    font-size: 0.74rem;
-    letter-spacing: 0.16em;
-    font-weight: 800;
-  }
-
-  .muted {
-    color: var(--ink-faint);
-    opacity: 1;
-  }
-
-  .search-toolbar {
-    padding: 0.95rem 1rem;
-    border-radius: calc(var(--radius-md) - 6px);
-    border: 1px solid var(--border);
-    background: var(--panel-surface-soft);
-  }
-
-  .search-input {
-    border-color: var(--border);
-    background: var(--field-surface);
-    color: var(--ink);
-  }
-
-  .search-input::placeholder {
-    color: var(--ink-faint);
-  }
-
-  .search-input:focus {
-    border-color: var(--focus-border);
-    box-shadow: var(--focus-ring);
-    background: var(--field-surface-focus);
-  }
-
-  .search-count,
-  .search-empty {
-    color: var(--ink-faint);
-  }
-
-  .table-wrapper {
-    background: var(--panel-surface-strong);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 0;
-    box-shadow: var(--surface-highlight);
-    max-height: calc(100vh - var(--entities-sticky-total-height, 0px) - 10rem);
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-  }
-
-  .entities-table {
-    color: var(--ink);
-    border-collapse: collapse;
-    width: 100%;
-  }
-
-  .entities-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: var(--surface-strong);
-    color: var(--ink-faint);
-    border-bottom: 2px solid var(--border);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    text-align: left;
-    padding: 0.75rem 1rem;
-    box-shadow: inset 0 -1px 0 var(--line-soft);
-  }
-
-  .entities-table thead th:first-child {
-    border-top-left-radius: var(--radius-sm);
-  }
-
-  .entities-table thead th:last-child {
-    border-top-right-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:last-child td:first-child {
-    border-bottom-left-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:last-child td:last-child {
-    border-bottom-right-radius: var(--radius-sm);
-  }
-
-  .entities-table tbody tr:nth-child(odd),
-  .entities-table tbody tr:nth-child(even) {
-    background: transparent;
-  }
-
-  .entities-table tbody tr:hover {
-    background: var(--hover-soft);
-  }
-
-  .entities-table tbody tr.approved:nth-child(odd),
-  .entities-table tbody tr.approved:nth-child(even) {
-    background: var(--success-soft);
-  }
-
-  .entities-table tbody tr.approved:hover {
-    background: var(--hover-success);
-  }
-
-  .entities-table tbody tr.search-match:nth-child(odd),
-  .entities-table tbody tr.search-match:nth-child(even) {
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  }
-
-  .entities-table tbody tr.search-match-active:nth-child(odd),
-  .entities-table tbody tr.search-match-active:nth-child(even) {
-    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
-  }
-
-  .status-pill {
-    background: var(--chip-surface);
-    border-color: var(--line-soft);
-    color: var(--ink-faint);
-  }
-
-  .status-pill--approved {
-    background: var(--chip-success-surface);
-    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
-    color: var(--success);
-  }
-
-  .context-menu {
-    border-color: var(--border);
-    background: var(--popover-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .context-title {
-    color: var(--accent);
-    font-size: 0.74rem;
-    letter-spacing: 0.14em;
-  }
-
-  .context-divider {
-    background: var(--line-soft);
-  }
-
-  @media (max-width: 720px) {
-    .tab-toolbar,
-    .search-toolbar {
-      padding: 0.9rem;
-    }
-  }
-
-  .entities-studio {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .entities-layout {
-    display: grid;
-    grid-template-columns: minmax(17rem, 21rem) minmax(0, 1fr);
-    align-items: start;
-    gap: 1rem;
-  }
-
-  .entities-sticky-stack {
-    margin-bottom: 0;
-  }
-
-  .entities-sticky-stack--pinned {
-    position: sticky;
-    top: 0;
-    z-index: calc(var(--layer-ribbon, 100) - 2);
-    background: var(--surface-strong);
-  }
-
-  .entities-sticky-sentinel {
-    height: 1px;
-    margin-top: -1px;
-  }
-
-  .entities-deck {
-    display: grid;
-    gap: 1rem;
-    position: sticky;
-    top: calc(var(--entities-sticky-total-height) + 1rem);
-  }
-
-  .tab-toolbar--studio,
-  .search-toolbar--studio,
-  .entities-panel,
-  .entities-side-card {
-    position: relative;
-    overflow: clip;
-  }
-
-  .tab-toolbar--studio::before,
-  .search-toolbar--studio::before,
-  .entities-panel::before,
-  .entities-side-card::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: min(220px, 42%);
-    height: 1px;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 34%, transparent), transparent);
-    pointer-events: none;
-  }
-
-  .entities-toolbar__side {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.9rem;
-    flex-wrap: wrap;
-  }
-
-  .scope-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem;
-    border-radius: 999px;
-    border: 1px solid var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
-  }
-
-  .scope-switch__item {
-    min-height: 2.2rem;
-    padding: 0.45rem 0.85rem;
-    border-radius: 999px;
-    border: none;
-    background: transparent;
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    transition: background 140ms ease, color 140ms ease, transform 140ms ease;
-  }
-
-  .scope-switch__item:hover {
-    transform: translateY(-1px);
-  }
-
-  .scope-switch__item--active {
-    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    color: var(--accent-strong);
-  }
-
-  .entities-toolbar__meta,
-  .search-toolbar__controls {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    flex-wrap: wrap;
-  }
-
-  .search-toolbar__copy {
-    max-width: 34rem;
-  }
-
-  .search-toolbar__controls {
-    justify-content: flex-end;
-    flex: 1 1 24rem;
-  }
-
-  .studio-chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2rem;
-    padding: 0.42rem 0.78rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.76rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .studio-chip--quiet {
-    border-color: var(--line-soft);
-    background: color-mix(in srgb, var(--surface) 82%, transparent);
-    color: var(--ink-soft);
-  }
-
-  .entities-panel {
-    padding: 1rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-lg) - 2px);
-    background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 34%),
-      var(--panel-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .entities-side-card {
-    padding: 1rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-lg) - 2px);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent 42%),
-      var(--panel-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .entities-side-card__stack {
-    display: grid;
-    gap: 0.85rem;
-    margin-top: 0.8rem;
-  }
-
-  .entities-side-stat {
-    display: grid;
-    gap: 0.2rem;
-    padding: 0.85rem 0.9rem;
-    border-radius: calc(var(--radius-md) - 4px);
-    background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
-    border: 1px solid var(--line-soft);
-  }
-
-  .entities-side-stat__value {
-    color: var(--accent-strong);
-    font-size: clamp(1.4rem, 2vw, 1.8rem);
-    font-weight: 800;
-    line-height: 1;
-  }
-
-  .entities-side-stat__label,
-  .entities-side-note {
-    color: var(--ink-soft);
-  }
-
-  .entities-side-stat__label {
-    font-size: 0.84rem;
-    line-height: 1.35;
-  }
-
-  .entities-side-note {
-    margin: 0;
-    font-size: 0.86rem;
-    line-height: 1.45;
-  }
-
-  .entities-panel__head {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 0.9rem;
-  }
-
-  .entities-panel__hint {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.5rem 0.8rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
-    border: 1px solid var(--line-soft);
-    color: var(--ink-soft);
-    font-size: 0.78rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .empty-row td {
-    color: var(--ink-faint);
-    text-align: center;
-    padding-block: 1.2rem;
-  }
-
-  @media (max-width: 720px) {
-    .entities-layout {
-      grid-template-columns: 1fr;
-    }
-
-    .entities-deck {
-      position: static;
-    }
-
-    .entities-toolbar__side,
-    .search-toolbar__controls,
-    .entities-panel__head {
-      align-items: stretch;
-      justify-content: flex-start;
-      flex-direction: column;
-    }
-
-    .entities-panel {
-      padding: 0.9rem;
-    }
-
-    .studio-chip,
-    .entities-panel__hint {
-      white-space: normal;
-    }
-  }
-</style>

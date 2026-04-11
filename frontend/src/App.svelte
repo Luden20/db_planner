@@ -21,11 +21,12 @@
   import RelationsTab from "./components/RelationsTab.svelte";
   import AttributesTab from "./components/AttributesTab.svelte";
   import FlowsTab from "./components/FlowsTab.svelte";
+  import HomeTab from "./components/HomeTab.svelte";
   import RolesTab from "./components/RolesTab.svelte";
   import ExportAISQL from "./components/forms/ExportAISQL.svelte";
   import {showToast, toastState} from "./lib/toast";
 
-  type TabKey = 'entities' | 'relations' | 'roles' | 'flows' | 'tertiary';
+  type TabKey = 'home' | 'entities' | 'relations' | 'roles' | 'flows' | 'tertiary';
   type ThemeMode = "light" | "dark";
   const THEME_STORAGE_KEY = "db-planner-theme";
 
@@ -143,7 +144,7 @@
       showToast(`Error al exportar sin relaciones: ${message}`, "error");
     }
   };
-  const handleExportAI = () => {
+  const handleExportScripts = () => {
     exportAISQLModal?.openDialog();
   };
   const handleRefresh = async () => {
@@ -266,7 +267,7 @@
         onSave={handleSave}
         onExport={handleExport}
         onExportWithoutRelations={handleExportWithoutRelations}
-        onExportAI={handleExportAI}
+        onExportScripts={handleExportScripts}
         onExit={handleExitRequest}
       />
     </div>
@@ -278,7 +279,9 @@
       class="tab-panel tab-panel--workspace"
       style={`--workspace-ribbon-offset: ${Math.max(ribbonHeight + 18, 18)}px;`}
     >
-      {#if activeTab === 'entities'}
+      {#if activeTab === 'home'}
+        <HomeTab project={data} onRefresh={handleRefresh}/>
+      {:else if activeTab === 'entities'}
         <EntitiesTab project={data} onSave={handleRefresh} onJumpTo={handleJumpToEntityTab}/>
       {:else if activeTab === 'relations'}
         <RelationsTab entities={data.Entities} onRefresh={handleRefresh} focusEntityId={focusEntityId} onJumpTo={handleJumpToEntityTab}/>
@@ -310,21 +313,15 @@
         <p class="modal-hint">Puedes salir sin guardar, guardar y salir o cancelar para continuar editando.</p>
         <div class="modal-actions">
           <button class="btn danger" on:click={exitWithoutSave} disabled={exitInProgress}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5.25 3A2.25 2.25 0 0 0 3 5.25v13.5A2.25 2.25 0 0 0 5.25 21h8.5A2.25 2.25 0 0 0 16 18.75V15.5a.75.75 0 0 0-1.5 0v3.25c0 .414-.336.75-.75.75h-8a.75.75 0 0 1-.75-.75V5.25c0-.414.336-.75.75-.75h8c.414 0 .75.336.75.75V9.5a.75.75 0 0 0 1.5 0V5.25A2.25 2.25 0 0 0 13.75 3h-8.5Zm11.53 6.22a.75.75 0 0 0-1.06 1.06l1.97 1.97H11.5a.75.75 0 0 0 0 1.5h6.19l-1.97 1.97a.75.75 0 1 0 1.06 1.06l3.25-3.25a.75.75 0 0 0 0-1.06l-3.25-3.25Z"/>
-            </svg>
+            <ButtonIcon name="exit"/>
             <span>Salir sin guardar</span>
           </button>
           <button class="btn primary" on:click={saveAndExit} disabled={exitInProgress}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.414a2 2 0 0 0-.586-1.414l-3.414-3.414A2 2 0 0 0 15.586 3H5Zm10 2.5V8H5V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1Zm-10 6h14V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-5.5Z"/>
-            </svg>
+            <ButtonIcon name="save"/>
             <span>Guardar y salir</span>
           </button>
           <button class="btn secondary" on:click={cancelExit} disabled={exitInProgress}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm2.53 4.47a.75.75 0 0 1 0 1.06L13.06 11l1.47 1.47a.75.75 0 0 1-1.06 1.06L12 12.06l-1.47 1.47a.75.75 0 1 1-1.06-1.06L10.94 11 9.47 9.53a.75.75 0 0 1 1.06-1.06L12 9.94l1.47-1.47a.75.75 0 0 1 1.06 0Z"/>
-            </svg>
+            <ButtonIcon name="close"/>
             <span>Cancelar</span>
           </button>
         </div>
@@ -352,9 +349,7 @@
           <p class="field-label">Archivo JSON</p>
           <div class="file-row">
             <button class="btn secondary" on:click={selectCreatePath} disabled={createBusy}>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M7.25 4A2.25 2.25 0 0 0 5 6.25v11.5A2.25 2.25 0 0 0 7.25 20h9.5A2.25 2.25 0 0 0 19 17.75V9.06a1.75 1.75 0 0 0-.51-1.24l-3.31-3.31A1.75 1.75 0 0 0 13.94 4h-6.7Zm0 1.5h6.44c.1 0 .2.04.28.12l3.66 3.66c.07.08.12.18.12.28v8.19c0 .41-.34.75-.75.75h-9.5a.75.75 0 0 1-.75-.75V5.75c0-.41.34-.75.75-.75Zm1.5 3.5a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-6.5Zm0 3a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-6.5Zm0 3a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5h-4.5Z"/>
-              </svg>
+              <ButtonIcon name="folder"/>
               <span>Seleccionar archivo</span>
             </button>
             <span class="path-label">
@@ -373,9 +368,7 @@
             <span>Cancelar</span>
           </button>
           <button class="btn primary" on:click={submitCreateProject} disabled={createBusy}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 4a.75.75 0 0 0-.75.75V11H5.75a.75.75 0 0 0 0 1.5h5.5v6.25a.75.75 0 0 0 1.5 0V12.5h5.5a.75.75 0 0 0 0-1.5h-5.5V4.75A.75.75 0 0 0 12 4Z"/>
-            </svg>
+            <ButtonIcon name="plus"/>
             <span>{createBusy ? "Creando..." : "Crear proyecto"}</span>
           </button>
         </div>

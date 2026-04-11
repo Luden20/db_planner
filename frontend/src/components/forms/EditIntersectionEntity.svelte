@@ -60,7 +60,7 @@
         rows="3"
         placeholder="Describe el propósito de esta entidad de intersección"
         bind:value={description}
-      />
+      ></textarea>
     </div>
 
     {#if error}
