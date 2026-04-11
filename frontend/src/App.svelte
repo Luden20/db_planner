@@ -1,5 +1,7 @@
 <script lang="ts">
   import {onMount} from "svelte";
+  import "@xyflow/svelte/dist/style.css";
+  // Forcing Vite rebuild to resolve ERD sync issues
   import {
     CreateExcelPath,
     CreateExcelPathWithoutRelations,

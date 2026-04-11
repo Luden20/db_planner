@@ -13,6 +13,11 @@ const (
 	TableTypeIntersection TableType = "intersection"
 )
 
+type Coordinates struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
 type Entity struct {
 	Id          int
 	Name        string
@@ -20,6 +25,7 @@ type Entity struct {
 	Attributes  []Attribute
 	Status      *bool
 	TableType   TableType
+	Coords      *Coordinates `json:"coords"`
 }
 
 type IntersectionEntity struct {
@@ -352,3 +358,23 @@ func (p *DbProject) MoveEntity(id int, direction string) error {
 	}
 	return nil
 }
+
+func (p *DbProject) UpdateEntityCoords(id int, x float64, y float64, isIntersection bool) error {
+	if isIntersection {
+		for idx := range p.IntersectionEntities {
+			if p.IntersectionEntities[idx].Entity.Id == id {
+				p.IntersectionEntities[idx].Entity.Coords = &Coordinates{X: x, Y: y}
+				return nil
+			}
+		}
+		return fmt.Errorf("intersection entity not found")
+	}
+
+	idx := p.entityIndex(id)
+	if idx < 0 {
+		return fmt.Errorf("entity not found")
+	}
+	p.Entities[idx].Coords = &Coordinates{X: x, Y: y}
+	return nil
+}
+

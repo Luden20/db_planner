@@ -1,3 +1,26 @@
+export namespace main {
+	
+	export class NodeCoordinate {
+	    id: number;
+	    x: number;
+	    y: number;
+	    is_intersection: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NodeCoordinate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.is_intersection = source["is_intersection"];
+	    }
+	}
+
+}
+
 export namespace utils {
 	
 	export class AISettings {
@@ -214,6 +237,20 @@ export namespace utils {
 		    return a;
 		}
 	}
+	export class Coordinates {
+	    x: number;
+	    y: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Coordinates(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	    }
+	}
 	export class RoleTablePermission {
 	    Id: number;
 	    TableId: number;
@@ -345,6 +382,7 @@ export namespace utils {
 	    Attributes: Attribute[];
 	    Status?: boolean;
 	    TableType: string;
+	    coords?: Coordinates;
 	
 	    static createFrom(source: any = {}) {
 	        return new Entity(source);
@@ -358,6 +396,7 @@ export namespace utils {
 	        this.Attributes = this.convertValues(source["Attributes"], Attribute);
 	        this.Status = source["Status"];
 	        this.TableType = source["TableType"];
+	        this.coords = this.convertValues(source["coords"], Coordinates);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

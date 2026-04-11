@@ -249,3 +249,11 @@ export function Save() {
 export function SaveOpenAIAPIKey(arg1) {
   return window['go']['main']['App']['SaveOpenAIAPIKey'](arg1);
 }
+
+export function UpdateAllCoordinates(arg1) {
+  return window['go']['main']['App']['UpdateAllCoordinates'](arg1);
+}
+
+export function UpdateEntityCoordinates(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateEntityCoordinates'](arg1, arg2, arg3, arg4);
+}

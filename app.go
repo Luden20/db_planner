@@ -305,6 +305,25 @@ func (a *App) GetRelationTypes() []string {
 	return utils.GetAllowedRelationTypes()
 }
 
+type NodeCoordinate struct {
+	Id             int     `json:"id"`
+	X              float64 `json:"x"`
+	Y              float64 `json:"y"`
+	IsIntersection bool    `json:"is_intersection"`
+}
+
+func (a *App) UpdateAllCoordinates(coords []NodeCoordinate) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	for _, c := range coords {
+		prj.UpdateEntityCoords(c.Id, c.X, c.Y, c.IsIntersection)
+	}
+	// Save the project after all updates
+	return utils.SaveChanges()
+}
+
 type schemaExportData struct {
 	Entities             []utils.Entity             `json:"entities"`
 	IntersectionEntities []utils.IntersectionEntity `json:"intersection_entities"`
@@ -523,6 +542,18 @@ func (a *App) EditEntity(id int, name string, description string) error {
 	}
 	return nil
 }
+func (a *App) UpdateEntityCoordinates(id int, x float64, y float64, isIntersection bool) error {
+	prj, err := utils.GetActualProject()
+	if err != nil {
+		return err
+	}
+	if err := prj.UpdateEntityCoords(id, x, y, isIntersection); err != nil {
+		return err
+	}
+	// Auto-save after moving
+	return utils.SaveChanges()
+}
+
 func (a *App) MoveEntity(id int, direction string) error {
 	prj, err := utils.GetActualProject()
 	if err != nil {
