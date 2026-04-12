@@ -861,3 +861,31 @@ func (a *App) RemoveRoleTablePermission(roleID int, permissionID int) error {
 	}
 	return prj.RemoveRoleTablePermission(roleID, permissionID)
 }
+
+func (a *App) GeneratePowerDesignerFromEntities(entityIds []int, intersectionIds []int) (string, error) {
+	project, err := a.GetActualProject()
+	if err != nil {
+		return "", err
+	}
+
+	exportData, err := buildSchemaExport(project, entityIds, intersectionIds)
+	if err != nil {
+		return "", err
+	}
+
+	return utils.GeneratePowerDesignerScript(exportData.Entities, exportData.IntersectionEntities, exportData.Relations)
+}
+
+func (a *App) ValidatePowerDesignerExport(entityIds []int, intersectionIds []int) ([]utils.PDAttributeError, error) {
+	project, err := a.GetActualProject()
+	if err != nil {
+		return nil, err
+	}
+
+	exportData, err := buildSchemaExport(project, entityIds, intersectionIds)
+	if err != nil {
+		return nil, err
+	}
+
+	return utils.ValidateEntitiesForPowerDesigner(exportData.Entities, exportData.IntersectionEntities), nil
+}

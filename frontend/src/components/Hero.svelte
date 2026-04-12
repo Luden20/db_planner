@@ -1,14 +1,16 @@
 <script lang="ts">
   import ButtonIcon from "./ButtonIcon.svelte";
 
-  export let onOpen: () => void;
-  export let onCreate: () => void;
+  let { onOpen, onCreate } = $props<{
+    onOpen: () => void;
+    onCreate: () => void;
+  }>();
 
   const features = [
     { icon: "database", label: "Entorno Local" },
     { icon: "relations", label: "Flujo Técnico" },
     { icon: "save", label: "Auto-guardado" },
-    { icon: "check", label: "Validación Lógica" }
+    { icon: "check", label: "Validación Lógica" },
   ];
 </script>
 
@@ -19,9 +21,12 @@
         <ButtonIcon name="spark" />
         <span>DB Planner v2.0</span>
       </div>
-      <h1>Modela tu base de datos <span class="text-accent">sin fricciones</span></h1>
+      <h1>
+        Modela tu base de datos <span class="text-accent">sin fricciones</span>
+      </h1>
       <p class="hero-subtitle">
-        Diseña esquemas profesionales, gestiona relaciones complejas y visualiza el flujo de datos en tiempo real.
+        Diseña esquemas profesionales, gestiona relaciones complejas y visualiza
+        el flujo de datos en tiempo real.
       </p>
     </header>
 
@@ -36,7 +41,10 @@
 
     <footer class="hero-footer">
       <div class="hero-actions">
-        <button class="control control--primary control--stack" on:click={onCreate}>
+        <button
+          class="control control--primary control--stack"
+          onclick={onCreate}
+        >
           <div class="control__label">
             <ButtonIcon name="plus" />
             <span>Crear Proyecto</span>
@@ -44,17 +52,23 @@
           <span class="control__meta">Inicia un nuevo esquema desde cero</span>
         </button>
 
-        <button class="control control--soft control--stack" on:click={onOpen}>
+        <button class="control control--soft control--stack" onclick={onOpen}>
           <div class="control__label">
             <ButtonIcon name="folder" />
             <span>Cargar Existente</span>
           </div>
-          <span class="control__meta">Continúa trabajando en tus archivos .json</span>
+          <span class="control__meta"
+            >Continúa trabajando en tus archivos .json</span
+          >
         </button>
       </div>
 
       <div class="hero-credits">
         <p class="hint">Diseñado por <strong>Alfonso Chafla</strong></p>
+        <span class="copyright-tag">Propiedad intelectual</span>
+      </div>
+      <div class="hero-credits">
+        <p class="hint">Metodologia creada por <strong>Miguel Ortiz</strong></p>
         <span class="copyright-tag">Propiedad intelectual</span>
       </div>
     </footer>
@@ -252,8 +266,7 @@
   .visual-grid {
     position: absolute;
     inset: 0;
-    background-image:
-      linear-gradient(var(--grid-line) 1px, transparent 1px),
+    background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
     background-size: 30px 30px;
     mask-image: radial-gradient(circle at 70% 40%, black, transparent 80%);

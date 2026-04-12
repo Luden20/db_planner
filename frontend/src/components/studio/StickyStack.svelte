@@ -1,11 +1,17 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, type Snippet } from "svelte";
 
-  export let height = 0;
+  let { 
+    height = $bindable(0),
+    children
+  } = $props<{
+    height?: number;
+    children?: Snippet;
+  }>();
   
-  let sentinelEl: HTMLDivElement | null = null;
-  let stackEl: HTMLDivElement | null = null;
-  let pinned = false;
+  let sentinelEl = $state<HTMLDivElement | null>(null);
+  let stackEl = $state<HTMLDivElement | null>(null);
+  let pinned = $state(false);
 
   const sync = () => {
     if (sentinelEl) {
@@ -30,13 +36,15 @@
     }
   });
 
-  $: if (sentinelEl) sync();
-  $: if (stackEl) syncHeight();
+  $effect(() => { if (sentinelEl) sync(); });
+  $effect(() => { if (stackEl) syncHeight(); });
 </script>
 
-<svelte:window on:scroll={sync} on:resize={sync} />
+<svelte:window onscroll={sync} onresize={sync} />
 
 <div class="studio-sticky-sentinel" bind:this={sentinelEl} aria-hidden="true"></div>
 <div class="studio-sticky-stack" class:studio-sticky-stack--pinned={pinned} bind:this={stackEl}>
-  <slot></slot>
+  {#if children}
+    {@render children()}
+  {/if}
 </div>

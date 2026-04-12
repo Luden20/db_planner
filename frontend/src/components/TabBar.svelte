@@ -1,15 +1,20 @@
 <script lang="ts">
   import ButtonIcon from "./ButtonIcon.svelte";
 
-  export let activeTab:'entities' | 'relations' | 'tertiary';
-  export let onSelect:(tab:'entities' | 'relations' | 'tertiary') => void;
+  let { 
+    activeTab, 
+    onSelect 
+  } = $props<{
+    activeTab: 'entities' | 'relations' | 'tertiary';
+    onSelect: (tab: 'entities' | 'relations' | 'tertiary') => void;
+  }>();
 </script>
 
 <nav class="tabs" aria-label="Vistas del proyecto">
   <button
     class:active={activeTab === 'entities'}
     class={`control control--stack ${activeTab === 'entities' ? 'control--accent control--active' : 'control--ghost'}`}
-    on:click={() => onSelect('entities')}
+    onclick={() => onSelect('entities')}
   >
     <ButtonIcon name="database"/>
     <span class="tab-title">Entidades</span>
@@ -18,7 +23,7 @@
   <button
     class:active={activeTab === 'relations'}
     class={`control control--stack ${activeTab === 'relations' ? 'control--accent control--active' : 'control--ghost'}`}
-    on:click={() => onSelect('relations')}
+    onclick={() => onSelect('relations')}
   >
     <ButtonIcon name="relations"/>
     <span class="tab-title">Relaciones</span>
@@ -27,7 +32,7 @@
   <button
     class:active={activeTab === 'tertiary'}
     class={`control control--stack ${activeTab === 'tertiary' ? 'control--accent control--active' : 'control--ghost'}`}
-    on:click={() => onSelect('tertiary')}
+    onclick={() => onSelect('tertiary')}
   >
     <ButtonIcon name="attributes"/>
     <span class="tab-title">Atributos</span>

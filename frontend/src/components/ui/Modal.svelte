@@ -1,27 +1,31 @@
 <script lang="ts">
-  import { Dialog } from "bits-ui";
-  import ButtonIcon from "../ButtonIcon.svelte";
+  import { Dialog, Separator } from "bits-ui";
+  import { X, Sparkle } from "phosphor-svelte";
+  import cn from "clsx";
 
   let { 
     title = "", 
+    description = "",
     open = $bindable(false),
     triggerLabel = "Abrir",
     triggerIcon = null,
     triggerVariant = "primary",
     triggerSize = "default", // default, sm, icon
     triggerClass = "",
-    showTrigger = true,
+    showTrigger = false,
     size = "default", // default, form
     busy = false,
     errorMessage = "",
     confirmLabel = "Confirmar",
     confirmIcon = null,
     confirmVariant = "primary",
-    cancelIcon = "close",
+    cancelLabel = "Cancelar",
     children, // main body
+    footer, // optional custom footer
     onConfirm = null,
     onCancel = null,
-    triggerDisabled = false
+    triggerDisabled = false,
+    trigger,
   } = $props();
 
   const handleConfirm = async () => {
@@ -36,158 +40,107 @@
     }
     open = false;
   }
-
-  const getTriggerClass = () => {
-    if (triggerSize === "sm") return `control control--sm control--${triggerVariant} ${triggerClass}`.trim();
-    if (triggerSize === "icon") return `control control--sm control--icon control--${triggerVariant} ${triggerClass}`.trim();
-    return `btn ${triggerVariant} ${triggerClass}`.trim();
-  }
 </script>
 
 <Dialog.Root bind:open>
   {#if showTrigger}
-  <Dialog.Trigger
-    disabled={triggerDisabled}
-    class={getTriggerClass()}
-  >
-    {#if triggerIcon}<ButtonIcon name={triggerIcon}/>{/if}
-    {#if triggerSize !== 'icon'}<span>{triggerLabel}</span>{/if}
-  </Dialog.Trigger>
+    {#if trigger}
+      {@render trigger()}
+    {:else}
+      <Dialog.Trigger
+        disabled={triggerDisabled}
+        class={cn(
+          "rounded-input inline-flex items-center justify-center whitespace-nowrap font-bold transition-all active:scale-[0.98] disabled:opacity-50",
+          triggerVariant === "primary" ? "bg-accent text-white hover:bg-accent/90 shadow-mini" : "bg-muted text-foreground hover:bg-muted/80",
+          triggerSize === "sm" ? "h-9 px-4 text-sm" : "h-12 px-6 text-[15px]",
+          triggerClass
+        )}
+      >
+        {#if triggerIcon}
+          {@const Icon = triggerIcon}
+          <Icon class="size-4 mr-2" />
+        {/if}
+        <span>{triggerLabel}</span>
+      </Dialog.Trigger>
+    {/if}
   {/if}
 
   <Dialog.Portal>
-    <Dialog.Overlay class="modal-backdrop" />
-    <Dialog.Content class="modal modal--{size}">
-      <header class="modal-header">
-        <Dialog.Title class="modal-title">{title}</Dialog.Title>
-        <Dialog.Close class="icon-btn control control--icon control--soft" aria-label="Cerrar modal">
-          <ButtonIcon name="close"/>
-        </Dialog.Close>
-      </header>
-
-      <section class="modal-body">
-        {#if children}
-          {@render children()}
+    <Dialog.Overlay
+      class="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+    />
+    <Dialog.Content
+      class={cn(
+        "fixed inset-0 m-auto z-[110] h-fit outline-hidden",
+        "rounded-card-lg bg-background shadow-popover border p-6 flex flex-col",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        size === "form" ? "w-[95vw] sm:max-w-[700px]" : "w-[95vw] sm:max-w-[490px]"
+      )}
+    >
+        <Dialog.Title
+          class="flex w-full items-center justify-center text-lg font-bold tracking-tight uppercase"
+        >
+          {title}
+        </Dialog.Title>
+        
+        <Separator.Root class="bg-border-card -mx-6 mb-6 mt-5 block h-px" />
+        
+        {#if description}
+          <Dialog.Description class="text-foreground-alt text-sm text-center mb-4">
+            {description}
+          </Dialog.Description>
         {/if}
-        {#if errorMessage}
-          <p class="error">{errorMessage}</p>
-        {/if}
-      </section>
 
-      <footer class="modal-footer">
-        <Dialog.Close class="btn secondary" disabled={busy} onclick={handleCancel}>
-           <ButtonIcon name={cancelIcon}/>
-           <span>Cancelar</span>
+        <div class="flex flex-col gap-4 overflow-y-auto max-h-[70vh]">
+          {#if children}
+            {@render children()}
+          {/if}
+          
+          {#if errorMessage}
+            <p class="text-destructive text-sm font-semibold mt-2">{errorMessage}</p>
+          {/if}
+        </div>
+
+        <div class="flex w-full justify-end gap-3 mt-8">
+          {#if footer}
+            {@render footer()}
+          {:else}
+            <button
+              class="h-11 rounded-input bg-muted text-foreground-alt hover:bg-muted/80 inline-flex items-center justify-center px-6 text-[14px] font-semibold transition-all active:scale-[0.98]"
+              onclick={handleCancel}
+              disabled={busy}
+            >
+              {cancelLabel}
+            </button>
+            
+            <button
+              class={cn(
+                "h-11 rounded-input shadow-mini inline-flex items-center justify-center px-8 text-[14px] font-bold transition-all active:scale-[0.98] disabled:opacity-50",
+                confirmVariant === "danger" ? "bg-destructive text-white hover:bg-destructive/90" : "bg-accent text-white hover:bg-accent/90"
+              )}
+              onclick={handleConfirm}
+              disabled={busy}
+            >
+              {#if busy}
+                <Sparkle class="size-4 mr-2 animate-spin" weight="fill" />
+                <span>Procesando...</span>
+              {:else}
+                {#if confirmIcon}
+                  {@const Icon = confirmIcon}
+                  <Icon class="size-4 mr-2" />
+                {/if}
+                <span>{confirmLabel}</span>
+              {/if}
+            </button>
+          {/if}
+        </div>
+
+        <Dialog.Close
+          class="focus-visible:ring-foreground focus-visible:ring-offset-background focus-visible:outline-hidden absolute right-5 top-5 rounded-md focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-[0.98] text-foreground-alt hover:text-foreground"
+        >
+          <X class="size-5" />
+          <span class="sr-only">Cerrar</span>
         </Dialog.Close>
-        <button class="btn {confirmVariant}" onclick={handleConfirm} disabled={busy}>
-           <ButtonIcon name={busy ? "spark" : confirmIcon}/>
-           <span>{busy ? "Procesando..." : confirmLabel}</span>
-        </button>
-      </footer>
     </Dialog.Content>
   </Dialog.Portal>
 </Dialog.Root>
-
-<style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    background: var(--overlay-scrim);
-    backdrop-filter: blur(10px);
-    z-index: var(--layer-modal);
-    padding: 1.2rem;
-  }
-
-  :global(.modal) {
-    width: min(560px, 100%);
-    max-height: min(88vh, 920px);
-    background: var(--popover-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    color: var(--ink);
-    padding: 1.15rem 1.15rem 1rem;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    animation: rise 180ms cubic-bezier(.19,1,.22,1);
-  }
-
-  :global(.modal--form) {
-    width: min(760px, 100%);
-    padding: 1.45rem 1.45rem 1.2rem;
-  }
-
-  .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 12px;
-  }
-
-  :global(.modal-title) {
-    margin: 0;
-    font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--ink);
-    font-family: var(--font-display);
-  }
-
-  .icon-btn {
-    color: var(--ink-soft);
-    display: grid;
-    place-items: center;
-  }
-
-  .modal-body {
-    padding: 0.4rem 0.15rem 0.9rem;
-    color: var(--ink-soft);
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  :global(.modal--form) .modal-body {
-    padding: 0.8rem 0.25rem 1.15rem;
-  }
-
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 4px;
-  }
-
-  .error {
-    margin: 0.4rem 0 0;
-    color: var(--danger);
-    font-weight: 600;
-  }
-
-  @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(8px) scale(0.98);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @media (max-width: 540px) {
-    :global(.modal) {
-      padding: 1rem 1rem 0.9rem;
-    }
-    :global(.modal--form) {
-      width: 100%;
-      padding: 1.1rem 1rem 1rem;
-    }
-    :global(.modal--form) .modal-body {
-      padding: 0.75rem 0.1rem 0.9rem;
-    }
-  }
-</style>

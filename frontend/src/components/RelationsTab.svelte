@@ -15,7 +15,6 @@
   import StickyStack from "./studio/StickyStack.svelte";
   import EmptyPanel from "./studio/EmptyPanel.svelte";
   import Button from "./ui/Button.svelte";
-  import Table from "./ui/Table.svelte";
   import RelationsTable from "./RelationsTable.svelte";
   import Badge from "./ui/Badge.svelte";
   import {showToast} from "../lib/toast";
@@ -34,38 +33,40 @@
     Relations: RelationRow[];
   };
 
-  export let entities: utils.Entity[] = [];
-  export let onRefresh: () => Promise<void> = async () => {};
-  export let focusEntityId: number | null = null;
-  export let onJumpTo: (tab: "entities" | "relations" | "tertiary", entityId: number | null) => void = () => {};
-  let comb: CombView[] = [];
-  let activeIndex = 0;
-  let lastSyncedFocusId: number | null = null;
-  let currentPrincipalEntity: utils.Entity | null = null;
-  let stickyStackHeight = 0;
-  let currentRelationCount = 0;
-  let approvedRelationCount = 0;
-  let relationOptions: string[] = [];
-  let loadingOptions = true;
-  let updating = false;
-  let relationOverrides: Record<string, string> = {};
-  let relationMenu: {
-    open: boolean;
-    x: number;
-    y: number;
-    principalId: number | null;
-    principalName: string;
-    targetId: number | null;
-    targetName: string;
-  } = {
+  let { 
+    entities = [], 
+    onRefresh = async () => {}, 
+    focusEntityId = null, 
+    onJumpTo = () => {} 
+  } = $props<{
+    entities?: utils.Entity[];
+    onRefresh?: () => Promise<void>;
+    focusEntityId?: number | null;
+    onJumpTo?: (tab: "entities" | "relations" | "tertiary", entityId: number | null) => void;
+  }>();
+
+  let comb = $state<CombView[]>([]);
+  let activeIndex = $state(0);
+  let lastSyncedFocusId = $state<number | null>(null);
+  let stickyStackHeight = $state(0);
+  let relationOptions = $state<string[]>([]);
+  let loadingOptions = $state(true);
+  let updating = $state(false);
+  let relationOverrides = $state<Record<string, string>>({});
+  
+  let relationMenu = $state({
     open: false,
     x: 0,
     y: 0,
-    principalId: null,
+    principalId: null as number | null,
     principalName: "",
-    targetId: null,
+    targetId: null as number | null,
     targetName: ""
-  };
+  });
+
+  const currentPrincipalEntity = $derived(entities.find(entity => entity.Id === comb[activeIndex]?.IdPrincipalEntity) ?? null);
+  const currentRelationCount = $derived(comb[activeIndex]?.Relations?.filter(relation => Boolean(relation.Relation)).length ?? 0);
+  const approvedRelationCount = $derived(comb[activeIndex]?.Relations?.filter(relation => isApprovedEntity(relation.IdEntity2)).length ?? 0);
 
   const applyOverrides = () => {
     comb = comb.map(view => ({
@@ -82,27 +83,28 @@
     const prevPrincipalId = keepIndex
       ? (comb[activeIndex]?.IdPrincipalEntity ?? null)
       : null;
-    const data = await GetCombinatory();
-    comb = (data || []).map(view => ({
-      ...view,
-      Relations: (view.Relations || []).map(rel => ({...rel, Relation: rel.Relation ?? ""}))
-    }));
-    applyOverrides();
-    if (keepIndex && prevPrincipalId !== null) {
-      const preservedIndex = comb.findIndex(view => view.IdPrincipalEntity === prevPrincipalId);
-      activeIndex = preservedIndex !== -1
-        ? preservedIndex
-        : Math.min(activeIndex, Math.max(comb.length - 1, 0));
-      return;
+    try {
+      const data = await GetCombinatory();
+      comb = (data || []).map(view => ({
+        ...view,
+        Relations: (view.Relations || []).map(rel => ({...rel, Relation: rel.Relation ?? ""}))
+      }));
+      applyOverrides();
+      if (keepIndex && prevPrincipalId !== null) {
+        const preservedIndex = comb.findIndex(view => view.IdPrincipalEntity === prevPrincipalId);
+        activeIndex = preservedIndex !== -1
+          ? preservedIndex
+          : Math.min(activeIndex, Math.max(comb.length - 1, 0));
+        return;
+      }
+      activeIndex = 0;
+    } catch (err) {
+      console.error("Error al cargar combinatorio:", err);
     }
-
-    activeIndex = 0;
   }
 
   const runRelationTransition = (update: () => void | Promise<void>) =>
     runViewTransition(update, "No se pudo aplicar la transicion de relaciones:");
-
-  
 
   onMount(async () => {
     try {
@@ -115,23 +117,25 @@
       loadingOptions = false;
     }
     load();
-    
   });
 
-  $: if (activeIndex >= comb.length) {
-    activeIndex = comb.length ? comb.length - 1 : 0;
-  }
+  $effect(() => {
+    if (activeIndex >= comb.length) {
+      activeIndex = comb.length ? comb.length - 1 : 0;
+    }
+  });
 
-  $: if (comb.length && focusEntityId !== null && focusEntityId !== lastSyncedFocusId) {
-    void syncFocusedEntity();
-  }
+  $effect(() => {
+    if (comb.length && focusEntityId !== null && focusEntityId !== lastSyncedFocusId) {
+      void syncFocusedEntity();
+    }
+  });
 
-  $: currentPrincipalEntity = entities.find(entity => entity.Id === comb[activeIndex]?.IdPrincipalEntity) ?? null;
-  $: currentRelationCount = comb[activeIndex]?.Relations?.filter(relation => Boolean(relation.Relation)).length ?? 0;
-  $: approvedRelationCount = comb[activeIndex]?.Relations?.filter(relation => isApprovedEntity(relation.IdEntity2)).length ?? 0;
-  $: if (relationMenu.open && relationMenu.principalId !== comb[activeIndex]?.IdPrincipalEntity) {
-    closeRelationMenu();
-  }
+  $effect(() => {
+    if (relationMenu.open && relationMenu.principalId !== comb[activeIndex]?.IdPrincipalEntity) {
+      closeRelationMenu();
+    }
+  });
 
   const selectPrincipalIndex = async (nextIndex: number) => {
     if (!comb.length || nextIndex < 0 || nextIndex >= comb.length) {
@@ -169,7 +173,6 @@
     if (!comb.length || focusEntityId === null) {
       return;
     }
-
     const nextIndex = comb.findIndex(view => view.IdPrincipalEntity === focusEntityId);
     if (nextIndex !== -1) {
       await selectPrincipalIndex(nextIndex);
@@ -183,51 +186,36 @@
   };
 
   const closeRelationMenu = () => {
-    relationMenu = {
-      open: false,
-      x: 0,
-      y: 0,
-      principalId: null,
-      principalName: "",
-      targetId: null,
-      targetName: ""
-    };
+    relationMenu.open = false;
+    relationMenu.principalId = null;
+    relationMenu.principalName = "";
+    relationMenu.targetId = null;
+    relationMenu.targetName = "";
   };
 
   const openRelationMenu = (relation: RelationRow, event: MouseEvent) => {
-    if (updating) {
-      return;
-    }
+    if (updating) return;
     const principalId = comb[activeIndex]?.IdPrincipalEntity ?? null;
     const principalName = comb[activeIndex]?.PrincipalEntity ?? "";
-    if (principalId === null) {
-      return;
-    }
+    if (principalId === null) return;
 
     const menuWidth = 240;
     const menuHeight = 164;
-    relationMenu = {
-      open: true,
-      x: Math.max(12, Math.min(event.clientX, window.innerWidth - menuWidth - 12)),
-      y: Math.max(12, Math.min(event.clientY, window.innerHeight - menuHeight - 12)),
-      principalId,
-      principalName,
-      targetId: relation.IdEntity2,
-      targetName: relation.Entity2
-    };
+    relationMenu.open = true;
+    relationMenu.x = Math.max(12, Math.min(event.clientX, window.innerWidth - menuWidth - 12));
+    relationMenu.y = Math.max(12, Math.min(event.clientY, window.innerHeight - menuHeight - 12));
+    relationMenu.principalId = principalId;
+    relationMenu.principalName = principalName;
+    relationMenu.targetId = relation.IdEntity2;
+    relationMenu.targetName = relation.Entity2;
   };
 
   const handleWindowKeydown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") {
-      closeRelationMenu();
-    }
+    if (event.key === "Escape") closeRelationMenu();
   };
 
   const goToRelatedEntityRelations = async () => {
-    if (relationMenu.targetId === null) {
-      return;
-    }
-
+    if (relationMenu.targetId === null) return;
     const nextIndex = comb.findIndex(view => view.IdPrincipalEntity === relationMenu.targetId);
     if (nextIndex === -1) {
       showToast("No se pudo abrir esa relación.", "error");
@@ -238,9 +226,7 @@
   };
 
   const goToRelatedEntityAttributes = () => {
-    if (relationMenu.targetId === null) {
-      return;
-    }
+    if (relationMenu.targetId === null) return;
     const targetId = relationMenu.targetId;
     closeRelationMenu();
     onJumpTo("tertiary", targetId);
@@ -254,17 +240,13 @@
 
   const relationIdentifiers = (relation: RelationRow) => ({
     principalId: comb[activeIndex]?.IdPrincipalEntity ?? null,
-    // Usamos siempre el Id si existe, incluso cuando Relation está vacío
     relationId: relation?.Id ?? null,
     targetId: relation?.IdEntity2 ?? null
   });
 
   const togglePrincipalApproval = async () => {
     const principalId = comb[activeIndex]?.IdPrincipalEntity;
-    if (principalId == null) {
-      return;
-    }
-
+    if (principalId == null) return;
     updating = true;
     try {
       await MarkEntityStatus(principalId, !isApprovedEntity(principalId));
@@ -286,10 +268,9 @@
     }
 
     const key = `${ids.principalId}-${ids.targetId}`;
-    relationOverrides[key] = selection; // Guardamos incluso vacío para respetar la selección
-    applyOverrides(); // Optimista: refleja en UI mientras persiste
+    relationOverrides[key] = selection;
+    applyOverrides();
 
-    // Advertencia si se intenta cambiar una relación N:N que ya tiene atributos reales
     if (ids.relationId != null) {
       const prevRelation = comb[activeIndex]?.Relations.find(r => r.Id === ids.relationId)?.Relation;
       if (prevRelation === "N:N" && selection !== "N:N") {
@@ -300,7 +281,6 @@
               "Esta intersección ya tiene datos (atributos reales). ¿Estás seguro de que quieres cambiar o eliminar la relación? Los atributos de la intersección se perderán."
             );
             if (!confirm) {
-              // Revertir cambio en UI
               await load(true);
               return;
             }
@@ -314,7 +294,6 @@
     updating = true;
     try {
       if (!selection) {
-        // Borrar relación existente solo si hay ID persistido
         if (ids.relationId != null) {
           showToast("Eliminando relación...", "info", 1200);
           await RemoveRelation(ids.relationId);
@@ -336,9 +315,9 @@
 </script>
 
 <svelte:window
-  on:click={closeRelationMenu}
-  on:keydown={handleWindowKeydown}
-  on:scroll={closeRelationMenu}
+  onclick={closeRelationMenu}
+  onkeydown={handleWindowKeydown}
+  onscroll={closeRelationMenu}
 />
 
 <section class="relations-tab relations-studio" style={`--relations-sticky-total-height: ${stickyStackHeight}px;`}>
@@ -364,7 +343,7 @@
         <select
           class="entity-select"
           value={comb[activeIndex]?.IdPrincipalEntity ?? ""}
-          on:change={handlePrincipalSelectChange}
+          onchange={handlePrincipalSelectChange}
           disabled={!comb.length}
         >
           {#each comb as view}
@@ -378,86 +357,189 @@
       {/snippet}
     </StudioToolbar>
   </StickyStack>
-{#if comb.length === 0}
-  <EmptyPanel message="Sin datos de relaciones." />
-{:else}
-  <div class="relations-layout">
-    <aside class="relations-deck">
-      {#if comb[activeIndex]}
-        <EntityFocusCard
-          kicker="Entidad principal"
-          name={comb[activeIndex].PrincipalEntity}
-          description={currentPrincipalEntity?.Description || "Sin definición."}
-          approved={isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
-          transitionName={`relation-head-${comb[activeIndex].IdPrincipalEntity}`}
-        >
-          <div slot="actions" class="entity-focus-actions">
-            <CreateEntity
-              id={comb[activeIndex].IdPrincipalEntity}
-              triggerLabel="Editar"
-              onSave={async () => {
-                await load(true);
-                await onRefresh();
-              }}
-            />
-            <Button
-              variant={isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? 'active' : 'success'}
-              icon={isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "check-off" : "check"}
-              disabled={updating}
-              onclick={togglePrincipalApproval}
-            >
-              {isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "Quitar" : "Aprobar"}
-            </Button>
-          </div>
-        </EntityFocusCard>
-      {/if}
-    </aside>
 
-    <div class="slide-shell">
-      <article
-        class:slide={true}
-        class:slide--approved={isApprovedEntity(comb[activeIndex]?.IdPrincipalEntity)}
-        style={`view-transition-name: relation-stage-${comb[activeIndex]?.IdPrincipalEntity ?? "empty"};`}
-      >
+  {#if comb.length === 0}
+    <EmptyPanel message="Sin datos de relaciones." />
+  {:else}
+    <div class="relations-layout">
+      <aside class="relations-deck">
         {#if comb[activeIndex]}
-          <div class="slide-panel__head">
-            <div>
-              <p class="label">Matriz activa</p>
-              <p class="muted">Configura cardinalidades.</p>
-            </div>
-            <span class="slide-panel__hint">Auto-guardado</span>
-          </div>
-<RelationsTable
-            relations={comb[activeIndex].Relations}
-            {relationOptions}
-            {updating}
-            {relationMenu}
-            onRelationChange={handleRelationChange}
-            onContextMenu={openRelationMenu}
-            {isApprovedEntity}
-            {getEntityDefinition}
-            {relationIdentifiers}
-          />
+          <EntityFocusCard
+            kicker="Entidad principal"
+            name={comb[activeIndex].PrincipalEntity}
+            description={currentPrincipalEntity?.Description || "Sin definición."}
+            approved={isApprovedEntity(comb[activeIndex].IdPrincipalEntity)}
+            transitionName={`relation-head-${comb[activeIndex].IdPrincipalEntity}`}
+          >
+            {#snippet actions()}
+              <div class="entity-focus-actions">
+                <CreateEntity
+                  id={comb[activeIndex].IdPrincipalEntity}
+                  triggerLabel="Editar"
+                  onSave={async () => {
+                    await load(true);
+                    await onRefresh();
+                  }}
+                />
+                <Button
+                  variant={isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? 'active' : 'success'}
+                  icon={isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "check-off" : "check"}
+                  disabled={updating}
+                  onclick={togglePrincipalApproval}
+                >
+                  {isApprovedEntity(comb[activeIndex].IdPrincipalEntity) ? "Quitar" : "Aprobar"}
+                </Button>
+              </div>
+            {/snippet}
+          </EntityFocusCard>
         {/if}
-      </article>
-    </div>
-  </div>
-{/if}
+      </aside>
 
-{#if relationMenu.open}
-  <div
-    class="context-menu"
-    style={`left: ${relationMenu.x}px; top: ${relationMenu.y}px;`}
-    on:click|stopPropagation
-    on:keydown|stopPropagation
-  >
-    <p class="context-title">{relationMenu.principalName} -> {relationMenu.targetName}</p>
-    <Button class="menu-action" variant="accent" size="sm" icon="attributes" onclick={goToRelatedEntityAttributes}>
-      Ir a atributos
-    </Button>
-    <Button class="menu-action" variant="ghost" size="sm" icon="relations" onclick={goToRelatedEntityRelations}>
-      Ir a esta relacion
-    </Button>
-  </div>
-{/if}
+      <div class="slide-shell">
+        <article
+          class:slide={true}
+          class:slide--approved={isApprovedEntity(comb[activeIndex]?.IdPrincipalEntity)}
+          style={`view-transition-name: relation-stage-${comb[activeIndex]?.IdPrincipalEntity ?? "empty"};`}
+        >
+          {#if comb[activeIndex]}
+            <div class="slide-panel__head">
+              <div>
+                <p class="label">Matriz activa</p>
+                <p class="muted">Configura cardinalidades.</p>
+              </div>
+              <span class="slide-panel__hint">Auto-guardado</span>
+            </div>
+            <RelationsTable
+              relations={comb[activeIndex].Relations}
+              {relationOptions}
+              {updating}
+              {relationMenu}
+              onRelationChange={handleRelationChange}
+              onContextMenu={openRelationMenu}
+              {isApprovedEntity}
+              {getEntityDefinition}
+              {relationIdentifiers}
+            />
+          {/if}
+        </article>
+      </div>
+    </div>
+  {/if}
+
+  {#if relationMenu.open}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="context-menu"
+      style={`left: ${relationMenu.x}px; top: ${relationMenu.y}px;`}
+      onclick={(e) => e.stopPropagation()}
+    >
+      <p class="context-title">{relationMenu.principalName} -> {relationMenu.targetName}</p>
+      <Button class="menu-action control--block" variant="accent" size="sm" icon="attributes" onclick={goToRelatedEntityAttributes}>
+        Ir a atributos
+      </Button>
+      <Button class="menu-action control--block" variant="ghost" size="sm" icon="relations" onclick={goToRelatedEntityRelations}>
+        Ir a esta relacion
+      </Button>
+    </div>
+  {/if}
 </section>
+
+<style>
+  .relations-studio {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .relations-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  .relations-deck {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    position: sticky;
+    top: calc(var(--relations-sticky-total-height) + 1.5rem);
+  }
+
+  .slide-panel__head {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-card);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--background);
+  }
+
+  .slide-panel__hint {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    letter-spacing: 0.05em;
+    opacity: 0.6;
+  }
+
+  .view-jumps {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .entity-nav {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .slide-shell {
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .slide--approved {
+    border-color: var(--success-soft);
+  }
+
+  .context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: var(--background);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 0.5rem;
+    min-width: 200px;
+    animation: menu-in 0.15s cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .context-title {
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border-card);
+    margin-bottom: 0.4rem;
+  }
+
+  @keyframes menu-in {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  @media (max-width: 1024px) {
+    .relations-layout {
+      grid-template-columns: 1fr;
+    }
+    .relations-deck {
+      position: static;
+    }
+  }
+</style>

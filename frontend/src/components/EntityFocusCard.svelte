@@ -1,10 +1,23 @@
 <script lang="ts">
-  export let kicker = "Entidad";
-  export let name = "";
-  export let description = "";
-  export let approved = false;
-  export let pendingLabel = "Pendiente";
-  export let transitionName = "";
+  import type { Snippet } from "svelte";
+
+  let { 
+    kicker = "Entidad", 
+    name = "", 
+    description = "", 
+    approved = false, 
+    pendingLabel = "Pendiente", 
+    transitionName = "",
+    actions
+  } = $props<{
+    kicker?: string;
+    name?: string;
+    description?: string;
+    approved?: boolean;
+    pendingLabel?: string;
+    transitionName?: string;
+    actions?: Snippet;
+  }>();
 </script>
 
 <article
@@ -26,7 +39,9 @@
   </div>
 
   <div class="entity-focus-card__actions">
-    <slot name="actions" />
+    {#if actions}
+      {@render actions()}
+    {/if}
   </div>
 </article>
 

@@ -1,6 +1,11 @@
 <script lang="ts">
-  export let name: string;
-  export let entityCount: number;
+  let { 
+    name, 
+    entityCount 
+  } = $props<{
+    name: string;
+    entityCount: number;
+  }>();
 </script>
 
 <section class="project-header">

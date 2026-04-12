@@ -65,6 +65,8 @@ export function ExportEntitiesToJSON(arg1:Array<number>,arg2:Array<number>):Prom
 
 export function ExportToExcel(arg1:string):Promise<void>;
 
+export function GeneratePowerDesignerFromEntities(arg1:Array<number>,arg2:Array<number>):Promise<string>;
+
 export function GenerateSQLFromEntities(arg1:Array<number>,arg2:Array<number>,arg3:string):Promise<utils.SQLGenerationResult>;
 
 export function GetAISettings():Promise<utils.AISettings>;
@@ -130,3 +132,5 @@ export function SaveOpenAIAPIKey(arg1:string):Promise<utils.AISettings>;
 export function UpdateAllCoordinates(arg1:Array<main.NodeCoordinate>):Promise<void>;
 
 export function UpdateEntityCoordinates(arg1:number,arg2:number,arg3:number,arg4:boolean):Promise<void>;
+
+export function ValidatePowerDesignerExport(arg1:Array<number>,arg2:Array<number>):Promise<Array<utils.PDAttributeError>>;

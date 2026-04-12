@@ -1,6 +1,11 @@
 <script lang="ts">
-  export let activeScope: "strong" | "intersection" = "strong";
-  export let onSwitch: (scope: "strong" | "intersection") => void;
+  let { 
+    activeScope = "strong", 
+    onSwitch 
+  } = $props<{
+    activeScope?: "strong" | "intersection";
+    onSwitch: (scope: "strong" | "intersection") => void;
+  }>();
 </script>
 
 <div class="scope-switch" role="tablist" aria-label="Tipo de vista">
@@ -9,7 +14,7 @@
     type="button"
     role="tab"
     aria-selected={activeScope === "strong"}
-    on:click={() => onSwitch("strong")}
+    onclick={() => onSwitch("strong")}
   >
     Fuertes
   </button>
@@ -18,7 +23,7 @@
     type="button"
     role="tab"
     aria-selected={activeScope === "intersection"}
-    on:click={() => onSwitch("intersection")}
+    onclick={() => onSwitch("intersection")}
   >
     Intersección
   </button>

@@ -7,8 +7,13 @@
     Link, Zap, Home
   } from 'lucide-svelte';
 
-  export let name = "spark";
-  export let title = "";
+  let { 
+    name = "spark", 
+    title = "" 
+  } = $props<{
+    name?: string;
+    title?: string;
+  }>();
 
   const icons: Record<string, any> = {
     'home': Home,
@@ -45,11 +50,10 @@
     'spark': Zap
   };
 
-  $: ActiveIcon = icons[name] || Zap;
+  const ActiveIcon = $derived(icons[name] || Zap);
 </script>
 
-<svelte:component
-  this={ActiveIcon}
+<ActiveIcon
   class="button-glyph"
   aria-hidden={title ? undefined : "true"}
   aria-label={title || undefined}

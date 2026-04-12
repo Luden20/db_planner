@@ -1,10 +1,15 @@
 <script lang="ts">
-  import { SvelteFlow, Controls, Background, MiniMap } from '@xyflow/svelte';
-  import '@xyflow/svelte/dist/style.css';
+  import { SvelteFlow, Controls, Background, MiniMap } from "@xyflow/svelte";
+  import "@xyflow/svelte/dist/style.css";
   import type { utils } from "../../wailsjs/go/models";
   import ButtonIcon from "./ButtonIcon.svelte";
+  import { Button } from "bits-ui";
+
   import DependencyAnalysisModal from "./forms/DependencyAnalysisModal.svelte";
-  import { UpdateAllCoordinates, UpdateEntityCoordinates } from "../../wailsjs/go/main/App";
+  import {
+    UpdateAllCoordinates,
+    UpdateEntityCoordinates,
+  } from "../../wailsjs/go/main/App";
 
   let { project, onRefresh } = $props<{
     project: utils.DbProject;
@@ -18,16 +23,18 @@
 
   $effect(() => {
     if (!project) return;
-    
+
     const newNodes: any[] = [];
     const newEdges: any[] = [];
-    
+
     const GRID_GAP = 280;
     const COLS = 5;
     let nextGridIndex = 0;
 
     const entities = Array.isArray(project.Entities) ? project.Entities : [];
-    const intersections = Array.isArray(project.IntersectionEntities) ? project.IntersectionEntities : [];
+    const intersections = Array.isArray(project.IntersectionEntities)
+      ? project.IntersectionEntities
+      : [];
     const relations = Array.isArray(project.Relations) ? project.Relations : [];
 
     entities.forEach((ent: any) => {
@@ -39,7 +46,7 @@
       newNodes.push({
         id: `strong-${ent.Id}`,
         position: { x, y },
-        data: { label: ent.Name, originalId: ent.Id, isIntersection: false }
+        data: { label: ent.Name, originalId: ent.Id, isIntersection: false },
       });
     });
 
@@ -53,7 +60,7 @@
       newNodes.push({
         id: `intersection-${ent.Id}`,
         position: { x, y },
-        data: { label: ent.Name, originalId: ent.Id, isIntersection: true }
+        data: { label: ent.Name, originalId: ent.Id, isIntersection: true },
       });
     });
 
@@ -103,8 +110,9 @@
         node.data.originalId,
         node.position.x,
         node.position.y,
-        node.data.isIntersection
+        node.data.isIntersection,
       );
+      handleSave();
     } catch (e) {
       console.error(e);
     }
@@ -128,25 +136,38 @@
   }
 </script>
 
-<div class="erd-canvas-container" style="height: 100vh; display: flex; flex-direction: column;">
-  <div style="display: flex; justify-content: flex-end; padding: 10px; gap: 10px; background: var(--surface);">
-    <button type="button" class="btn accent" onclick={() => analysisModal?.openDialog()}>
+<Button.Root
+  class="rounded-input bg-dark text-background shadow-mini hover:bg-dark/95 inline-flex
+	h-12 items-center justify-center px-[21px] text-[15px]
+	font-semibold active:scale-[0.98] active:transition-all"
+>
+  Unlimited
+</Button.Root>
+<div
+  class="erd-canvas-container"
+  style="height: 100vh; display: flex; flex-direction: column;"
+>
+  <div
+    style="display: flex; justify-content: flex-end; padding: 10px; gap: 10px; background: var(--surface);"
+  >
+    <button
+      type="button"
+      class="btn accent"
+      onclick={() => analysisModal?.openDialog()}
+    >
       <ButtonIcon name="relations" />
       <span>Analizar dependencias</span>
-    </button>
-    <button type="button" class="btn secondary" onclick={handleSave}>
-      <ButtonIcon name="save" />
-      <span>Guardar cambios</span>
     </button>
   </div>
 
   <div style="flex: 1; width: 100%;">
-    <SvelteFlow 
-      bind:nodes 
-      bind:edges 
-      fitView 
+    <SvelteFlow
+      bind:nodes
+      bind:edges
+      fitView
       colorMode="dark"
-      onnodedragstop={handleNodeDragStop}>
+      onnodedragstop={handleNodeDragStop}
+    >
       <Controls />
       <Background />
       <MiniMap />

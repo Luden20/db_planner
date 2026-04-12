@@ -126,6 +126,10 @@ export function ExportToExcel(arg1) {
   return window['go']['main']['App']['ExportToExcel'](arg1);
 }
 
+export function GeneratePowerDesignerFromEntities(arg1, arg2) {
+  return window['go']['main']['App']['GeneratePowerDesignerFromEntities'](arg1, arg2);
+}
+
 export function GenerateSQLFromEntities(arg1, arg2, arg3) {
   return window['go']['main']['App']['GenerateSQLFromEntities'](arg1, arg2, arg3);
 }
@@ -256,4 +260,8 @@ export function UpdateAllCoordinates(arg1) {
 
 export function UpdateEntityCoordinates(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UpdateEntityCoordinates'](arg1, arg2, arg3, arg4);
+}
+
+export function ValidatePowerDesignerExport(arg1, arg2) {
+  return window['go']['main']['App']['ValidatePowerDesignerExport'](arg1, arg2);
 }

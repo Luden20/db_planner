@@ -1,13 +1,35 @@
 <script lang="ts">
-  import {fade} from "svelte/transition";
-  import {onDestroy} from "svelte";
+  import { fade } from "svelte/transition";
+  import { onDestroy } from "svelte";
   import ButtonIcon from "../ButtonIcon.svelte";
-  import {GenerateSQLFromEntities, GetAISettings, SaveOpenAIAPIKey} from "../../../wailsjs/go/main/App";
-  import {utils} from "../../../wailsjs/go/models";
-  import {showToast} from "../../lib/toast";
+  import Modal from "../ui/Modal.svelte";
+  import { GenerateSQLFromEntities, GetAISettings, SaveOpenAIAPIKey } from "../../../wailsjs/go/main/App";
+  import { utils } from "../../../wailsjs/go/models";
+  import { showToast } from "../../lib/toast";
+  import { 
+    Sparkle, 
+    Database as DatabaseIcon, 
+    Table, 
+    FileCode, 
+    Copy, 
+    ArrowLeft, 
+    Check, 
+    Trash, 
+    CircleNotch,
+    X,
+    WarningCircle
+  } from "phosphor-svelte";
+  import cn from "clsx";
 
-  export let entities: utils.Entity[] = [];
-  export let intersectionEntities: utils.IntersectionEntity[] = [];
+  let { 
+    entities = [], 
+    intersectionEntities = [], 
+    isOpen = $bindable(false) 
+  } = $props<{
+    entities?: utils.Entity[];
+    intersectionEntities?: utils.IntersectionEntity[];
+    isOpen?: boolean;
+  }>();
 
   type ViewState = "select" | "loading" | "result" | "error";
   type ResultView = "generated" | "ai";
@@ -30,51 +52,42 @@
   ];
 
   const pipelineStages: PipelineStage[] = [
-    {id: "schema", title: "Empaquetando esquema", detail: "Consolidando tablas, cruces y relaciones visibles."},
-    {id: "request", title: "Generando script", detail: "Construyendo DDL, relaciones, documentacion y plantillas base."},
-    {id: "assembly", title: "Completando salida", detail: "Intentando enriquecer el resultado con SQL adicional de IA si aplica."},
+    {id: "schema", title: "Empaquetando esquema", detail: "Consolidando tablas, cruces y relaciones."},
+    {id: "request", title: "Generando script", detail: "Construyendo DDL, relaciones y documentación."},
+    {id: "assembly", title: "Completando salida", detail: "Enriqueciendo resultado con SQL de IA."},
   ];
 
   const baseAISettings = () => new utils.AISettings({HasAPIKey: false, OpenAIModel: "gpt-5-mini"});
 
-  let isOpen = false;
-  let viewState: ViewState = "select";
-  let aiSettings: utils.AISettings = baseAISettings();
-  let generatedResult: utils.SQLGenerationResult | null = null;
-  let resultView: ResultView = "generated";
-  let selectedIds = new Set<number>();
-  let selectedIntersectionIds = new Set<number>();
-  let database = databaseOptions[0].value;
-  let apiKeyDraft = "";
-  let settingsExpanded = false;
-  let settingsBusy = false;
-  let generateBusy = false;
-  let inlineErrorMessage = "";
-  let pipelineErrorMessage = "";
-  let loadingStageIndex = 0;
-  let loadingProgress = 0;
-  let loadingPulse = "Preparando consulta";
+  let viewState: ViewState = $state("select");
+  let aiSettings: utils.AISettings = $state(baseAISettings());
+  let generatedResult: utils.SQLGenerationResult | null = $state(null);
+  let resultView: ResultView = $state("generated");
+  let selectedIds = $state(new Set<number>());
+  let selectedIntersectionIds = $state(new Set<number>());
+  let database = $state(databaseOptions[0].value);
+  let apiKeyDraft = $state("");
+  let settingsExpanded = $state(false);
+  let settingsBusy = $state(false);
+  let generateBusy = $state(false);
+  let inlineErrorMessage = $state("");
+  let pipelineErrorMessage = $state("");
+  let loadingStageIndex = $state(0);
+  let loadingProgress = $state(0);
+  let loadingPulse = $state("Preparando consulta");
   let stageTimer: ReturnType<typeof setInterval> | null = null;
   let progressTimer: ReturnType<typeof setInterval> | null = null;
   let pulseTimer: ReturnType<typeof setInterval> | null = null;
 
-  const pulseMessages = [
-    "Preparando consulta",
-    "Leyendo definiciones",
-    "Generando script",
-    "Puliendo salida",
-  ];
+  const pulseMessages = ["Preparando", "Leyendo", "Generando", "Puliendo"];
 
-  $: totalSelectable = entities.length + intersectionEntities.length;
-  $: selectedCount = selectedIds.size + selectedIntersectionIds.size;
-  $: canGenerate = selectedCount > 0 && database.trim().length > 0 && !generateBusy;
-  $: hasGeneratedScript = !!generatedResult?.GeneratedScript?.trim();
-  $: hasAISQL = !!generatedResult?.SQL?.trim();
-  $: activeStage = pipelineStages[Math.min(loadingStageIndex, pipelineStages.length - 1)];
+  const totalSelectable = $derived(entities.length + intersectionEntities.length);
+  const selectedCount = $derived(selectedIds.size + selectedIntersectionIds.size);
+  const canGenerate = $derived(selectedCount > 0 && database.trim().length > 0 && !generateBusy);
+  const hasAISQL = $derived(!!generatedResult?.SQL?.trim());
+  const activeStage = $derived(pipelineStages[Math.min(loadingStageIndex, pipelineStages.length - 1)]);
 
-  onDestroy(() => {
-    stopLoadingPresentation();
-  });
+  onDestroy(() => stopLoadingPresentation());
 
   const clearMessages = () => {
     inlineErrorMessage = "";
@@ -85,9 +98,7 @@
     try {
       aiSettings = await GetAISettings();
     } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "No se pudo leer la configuracion de IA.";
       aiSettings = baseAISettings();
-      inlineErrorMessage = `${message}`;
     }
   };
 
@@ -111,16 +122,13 @@
   };
 
   export const closeDialog = () => {
-    if (settingsBusy || generateBusy) {
-      return;
-    }
+    if (settingsBusy || generateBusy) return;
     isOpen = false;
   };
 
   const returnToSelection = () => {
     clearMessages();
     generatedResult = null;
-    resultView = "generated";
     viewState = "select";
   };
 
@@ -130,1172 +138,260 @@
       selectedIntersectionIds = new Set();
       return;
     }
-
-    selectedIds = new Set(entities.map((entity) => entity.Id));
-    selectedIntersectionIds = new Set(intersectionEntities.map((item) => item.Entity.Id));
+    selectedIds = new Set(entities.map(e => e.Id));
+    selectedIntersectionIds = new Set(intersectionEntities.map(e => e.Entity.Id));
   };
 
   const toggleEntity = (id: number) => {
-    if (selectedIds.has(id)) {
-      selectedIds.delete(id);
-    } else {
-      selectedIds.add(id);
-    }
+    if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
     selectedIds = new Set(selectedIds);
   };
 
   const toggleIntersection = (id: number) => {
-    if (selectedIntersectionIds.has(id)) {
-      selectedIntersectionIds.delete(id);
-    } else {
-      selectedIntersectionIds.add(id);
-    }
+    if (selectedIntersectionIds.has(id)) selectedIntersectionIds.delete(id); else selectedIntersectionIds.add(id);
     selectedIntersectionIds = new Set(selectedIntersectionIds);
   };
 
-  const saveApiKey = async () => {
-    if (!apiKeyDraft.trim()) {
-      inlineErrorMessage = "Ingresa una API key para guardarla.";
-      return;
-    }
-
-    settingsBusy = true;
-    inlineErrorMessage = "";
-    try {
-      aiSettings = await SaveOpenAIAPIKey(apiKeyDraft.trim());
-      apiKeyDraft = "";
-      settingsExpanded = false;
-      showToast("API key guardada.", "success");
-    } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
-      inlineErrorMessage = `${message}`;
-    } finally {
-      settingsBusy = false;
-    }
-  };
-
-  const clearApiKey = async () => {
-    settingsBusy = true;
-    inlineErrorMessage = "";
-    try {
-      aiSettings = await SaveOpenAIAPIKey("");
-      apiKeyDraft = "";
-      settingsExpanded = false;
-      showToast("API key eliminada.", "success");
-    } catch (err) {
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
-      inlineErrorMessage = `${message}`;
-    } finally {
-      settingsBusy = false;
-    }
-  };
-
-  const startLoadingPresentation = () => {
-    stopLoadingPresentation();
-    loadingStageIndex = 0;
-    loadingProgress = 7;
-    loadingPulse = pulseMessages[0];
-
-    progressTimer = setInterval(() => {
-      loadingProgress = Math.min(94, loadingProgress + 1 + Math.random() * 4);
-    }, 180);
-
-    stageTimer = setInterval(() => {
-      loadingStageIndex = Math.min(pipelineStages.length - 1, loadingStageIndex + 1);
-    }, 1450);
-
-    let pulseIndex = 0;
-    pulseTimer = setInterval(() => {
-      pulseIndex = (pulseIndex + 1) % pulseMessages.length;
-      loadingPulse = pulseMessages[pulseIndex];
-    }, 1100);
-  };
-
-  const stopLoadingPresentation = () => {
-    if (progressTimer) {
-      clearInterval(progressTimer);
-      progressTimer = null;
-    }
-    if (stageTimer) {
-      clearInterval(stageTimer);
-      stageTimer = null;
-    }
-    if (pulseTimer) {
-      clearInterval(pulseTimer);
-      pulseTimer = null;
-    }
-  };
-
-  const finishLoadingPresentation = () => {
-    stopLoadingPresentation();
-    loadingStageIndex = pipelineStages.length - 1;
-    loadingProgress = 100;
-    loadingPulse = "Salida lista";
-  };
-
   const handleGenerate = async () => {
-    if (!canGenerate) {
-      return;
-    }
-
+    if (!canGenerate) return;
     generateBusy = true;
-    clearMessages();
-    generatedResult = null;
     viewState = "loading";
     startLoadingPresentation();
-
     try {
-      generatedResult = await GenerateSQLFromEntities(
-        Array.from(selectedIds),
-        Array.from(selectedIntersectionIds),
-        database,
-      );
-
-      if (!generatedResult?.GeneratedScript?.trim()) {
-        generatedResult = null;
-        throw new Error("No se pudo generar el script local.");
-      }
-
+      generatedResult = await GenerateSQLFromEntities(Array.from(selectedIds), Array.from(selectedIntersectionIds), database);
       resultView = "generated";
       finishLoadingPresentation();
-      await new Promise((resolve) => setTimeout(resolve, 320));
+      await new Promise(r => setTimeout(r, 400));
       viewState = "result";
-    } catch (err) {
+    } catch (err: any) {
       stopLoadingPresentation();
-      const message = err?.error ?? err?.message ?? err ?? "Error desconocido";
-      pipelineErrorMessage = `${message}`;
+      pipelineErrorMessage = err?.message || err || "Error desconocido";
       viewState = "error";
     } finally {
       generateBusy = false;
     }
   };
 
-  const retryFromError = async () => {
-    viewState = "loading";
-    pipelineErrorMessage = "";
-    await handleGenerate();
+  const saveApiKey = async () => {
+    if (!apiKeyDraft.trim()) return;
+    settingsBusy = true;
+    try {
+      aiSettings = await SaveOpenAIAPIKey(apiKeyDraft.trim());
+      apiKeyDraft = "";
+      settingsExpanded = false;
+      showToast("Key guardada", "success");
+    } catch (err: any) {
+      inlineErrorMessage = err?.message || "Error al guardar key";
+    } finally { settingsBusy = false; }
   };
 
-  const copyGeneratedScript = async () => {
-    if (!generatedResult?.GeneratedScript?.trim()) {
-      return;
-    }
-    await navigator.clipboard.writeText(generatedResult.GeneratedScript);
-    showToast("Script generado copiado al portapapeles.", "success");
+  const startLoadingPresentation = () => {
+    stopLoadingPresentation();
+    loadingStageIndex = 0;
+    loadingProgress = 10;
+    progressTimer = setInterval(() => { loadingProgress = Math.min(95, loadingProgress + Math.random() * 3); }, 200);
+    stageTimer = setInterval(() => { loadingStageIndex = Math.min(pipelineStages.length - 1, loadingStageIndex + 1); }, 1800);
   };
 
-  const copySQL = async () => {
-    if (!generatedResult?.SQL?.trim()) {
-      return;
-    }
-    await navigator.clipboard.writeText(generatedResult.SQL);
-    showToast("SQL de IA copiado al portapapeles.", "success");
+  const stopLoadingPresentation = () => {
+    if (progressTimer) clearInterval(progressTimer);
+    if (stageTimer) clearInterval(stageTimer);
   };
 
-  const copyJSON = async () => {
-    if (!generatedResult?.ExportJSON?.trim()) {
-      return;
-    }
-    await navigator.clipboard.writeText(generatedResult.ExportJSON);
-    showToast("JSON copiado al portapapeles.", "success");
+  const finishLoadingPresentation = () => {
+    stopLoadingPresentation();
+    loadingProgress = 100;
+  };
+
+  const copyText = async (text: string, msg: string) => {
+    await navigator.clipboard.writeText(text);
+    showToast(msg, "success");
+  };
+
+  const getTitle = () => {
+    if (viewState === "select") return "Exportar Scripts SQL";
+    if (viewState === "loading") return "Generando Pipeline";
+    if (viewState === "result") return "Resultado Final";
+    return "Error de Generación";
   };
 </script>
 
-{#if isOpen}
-  <div class="modal-backdrop" role="presentation" on:click={closeDialog}>
-    <div class="modal-shell" role="dialog" aria-modal="true" aria-labelledby="ai-export-title" on:click|stopPropagation>
-      <header class="modal-head">
-        <div>
-          <p class="modal-kicker">@ Exportar scripts</p>
-          <h2 id="ai-export-title">
-            {#if viewState === "select"}
-              Selecciona tablas y genera scripts
-            {:else if viewState === "loading"}
-              Generando scripts
-            {:else if viewState === "result"}
-              Resultado listo
-            {:else}
-              No se pudo generar la exportacion
+<Modal
+  bind:open={isOpen}
+  title={getTitle()}
+  description={viewState === 'select' ? "Elige el motor, las tablas y opcionalmente habilita IA para enriquecer el script." : ""}
+  size="form"
+>
+  <div class="flex flex-col gap-6">
+    {#if viewState === "select"}
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4" in:fade>
+        <!-- Layout similar to the original grid but cleaner -->
+        <div class="flex flex-col gap-4">
+          <div class="rounded-card-sm border border-border-card bg-muted/20 p-4">
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-[10px] font-black uppercase tracking-widest text-accent">Configuración</span>
+              <span class={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", aiSettings.HasAPIKey ? "bg-green-500/10 text-green-500" : "bg-orange-500/10 text-orange-500")}>
+                {aiSettings.HasAPIKey ? "IA Disponible" : "Solo local"}
+              </span>
+            </div>
+            
+            <div class="flex flex-col gap-1.5 mb-4">
+              <label class="text-xs font-bold text-foreground-alt">Motor de DB</label>
+              <select bind:value={database} class="h-10 w-full rounded-card-sm border border-border-input bg-background px-3 text-sm focus:ring-2 focus:ring-accent outline-none">
+                {#each databaseOptions as opt}
+                  <option value={opt.value}>{opt.label}</option>
+                {/each}
+              </select>
+              <p class="text-[10px] text-muted-foreground mt-1 italic">
+                 {databaseOptions.find(o => o.value === database)?.hint}
+              </p>
+            </div>
+
+            <button 
+              class="w-full h-9 rounded-card-sm border border-dashed border-border-card text-[11px] font-bold hover:bg-muted/50 transition-colors flex items-center justify-center gap-2"
+              onclick={() => settingsExpanded = !settingsExpanded}
+            >
+              <Sparkle class="size-3" />
+              {settingsExpanded ? "Ocultar ajustes IA" : "Configurar API Key IA"}
+            </button>
+
+            {#if settingsExpanded}
+              <div class="mt-4 flex flex-col gap-3 p-3 bg-background rounded-card-sm border border-border-card" in:fade>
+                <input 
+                  type="password" 
+                  bind:value={apiKeyDraft} 
+                  placeholder="sk-..." 
+                  class="h-9 w-full rounded-card-sm border border-border-input bg-muted/30 px-3 text-xs outline-none"
+                />
+                <button class="h-8 rounded-input bg-dark text-background text-[11px] font-bold" onclick={saveApiKey} disabled={settingsBusy}>
+                  {settingsBusy ? "Guardando..." : "Guardar API Key"}
+                </button>
+              </div>
             {/if}
-          </h2>
-          <p class="modal-hint">
-            {#if viewState === "select"}
-              Elige el subconjunto del modelo, define el motor y genera un script completo con opcion adicional de SQL por IA.
-            {:else if viewState === "loading"}
-              El pipeline esta procesando tu esquema. La salida aparecera en una vista separada.
-            {:else if viewState === "result"}
-              Revisa el script local, compara la salida de IA si existe y vuelve a correr si quieres afinar otro subconjunto.
-            {:else}
-              La generacion se interrumpio. Puedes volver a la seleccion o reintentar sin perder contexto.
-            {/if}
-          </p>
+          </div>
+
+          <div class="rounded-card-sm border border-border-card p-4 bg-muted/10">
+             <span class="text-[10px] font-black uppercase tracking-widest text-accent mb-3 block">Estadísticas</span>
+             <div class="grid grid-cols-3 gap-2 text-center">
+               <div class="flex flex-col">
+                 <span class="text-lg font-bold leading-none">{selectedCount}</span>
+                 <span class="text-[9px] text-muted-foreground uppercase font-bold">Marcadas</span>
+               </div>
+               <div class="flex flex-col">
+                 <span class="text-lg font-bold leading-none">{entities.length}</span>
+                 <span class="text-[9px] text-muted-foreground uppercase font-bold">Fuertes</span>
+               </div>
+               <div class="flex flex-col border-none">
+                 <span class="text-lg font-bold leading-none">{intersectionEntities.length}</span>
+                 <span class="text-[9px] text-muted-foreground uppercase font-bold">Cruces</span>
+               </div>
+             </div>
+          </div>
         </div>
-        <button class="control control--icon control--soft" type="button" on:click={closeDialog} aria-label="Cerrar" disabled={generateBusy || settingsBusy}>
-          <ButtonIcon name="close"/>
-        </button>
-      </header>
 
-      <div class="modal-body">
-        {#if viewState === "select"}
-          <section class="state-view state-view--select" in:fade={{duration: 180}}>
-            <section class="top-grid">
-              <div class="config-card">
-                <div class="config-card__head">
-                  <div>
-                    <p class="label">Destino SQL</p>
-                    <p class="muted">El motor cambia el dialecto y el estilo del script generado.</p>
-                  </div>
-                  <span class={`status-chip ${aiSettings.HasAPIKey ? 'status-chip--ok' : 'status-chip--warn'}`}>
-                    {#if aiSettings.HasAPIKey}
-                      IA disponible
-                    {:else}
-                      Solo script local
-                    {/if}
-                  </span>
-                </div>
-
-                <label class="field">
-                  <span>Base de datos</span>
-                  <select bind:value={database}>
-                    {#each databaseOptions as option}
-                      <option value={option.value}>{option.label}</option>
-                    {/each}
-                  </select>
+        <div class="rounded-card-sm border border-border-card p-4 flex flex-col gap-3 max-h-[400px]">
+           <div class="flex items-center justify-between">
+              <span class="text-[10px] font-black uppercase tracking-widest text-accent">Selección de tablas</span>
+              <button class="text-[10px] font-bold hover:underline" onclick={toggleAll}>Alternar todo</button>
+           </div>
+           
+           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar flex flex-col gap-1">
+              {#each entities as entity}
+                <label class={cn("flex items-center gap-3 p-2 rounded-lg border border-transparent hover:bg-muted/30 cursor-pointer", selectedIds.has(entity.Id) && "bg-accent/5 border-accent/20")}>
+                  <input type="checkbox" checked={selectedIds.has(entity.Id)} onchange={() => toggleEntity(entity.Id)} class="size-3.5" />
+                  <span class="text-xs font-bold leading-none truncate">{entity.Name}</span>
                 </label>
-
-                <p class="selection-hint">
-                  {databaseOptions.find((option) => option.value === database)?.hint}
-                </p>
-
-                <div class="config-actions">
-                  <button class="control control--sm control--ghost" type="button" on:click={() => settingsExpanded = !settingsExpanded}>
-                    <ButtonIcon name="spark"/>
-                    <span>{settingsExpanded ? "Ocultar configuracion" : "Configurar salida IA"}</span>
-                  </button>
-                  <span class="model-note">Modelo IA: {aiSettings.OpenAIModel}</span>
-                </div>
-
-                {#if settingsExpanded}
-                  <div class="settings-panel">
-                    <label class="field">
-                      <span>OpenAI API key</span>
-                      <input
-                        type="password"
-                        bind:value={apiKeyDraft}
-                        placeholder={aiSettings.HasAPIKey ? "Pega una nueva key o usa quitar key" : "sk-..."}
-                        autocomplete="off"
-                        spellcheck="false"
-                        disabled={settingsBusy}
-                      />
-                    </label>
-                    <p class="settings-note">La API key es opcional. Si existe, ademas del script local se intentara generar SQL con IA.</p>
-                    <div class="settings-actions">
-                      <button class="control control--sm control--accent" type="button" on:click={saveApiKey} disabled={settingsBusy}>
-                        <ButtonIcon name="save"/>
-                        <span>{settingsBusy ? "Guardando..." : "Guardar key"}</span>
-                      </button>
-                      {#if aiSettings.HasAPIKey}
-                        <button class="control control--sm control--ghost" type="button" on:click={clearApiKey} disabled={settingsBusy}>
-                          <ButtonIcon name="trash"/>
-                          <span>Quitar key</span>
-                        </button>
-                      {/if}
-                    </div>
-                  </div>
-                {/if}
-              </div>
-
-              <div class="summary-card">
-                <p class="label">Pipeline</p>
-                <div class="summary-stats">
-                  <div>
-                    <strong>{selectedCount}</strong>
-                    <span>tablas marcadas</span>
-                  </div>
-                  <div>
-                    <strong>{entities.length}</strong>
-                    <span>fuertes</span>
-                  </div>
-                  <div>
-                    <strong>{intersectionEntities.length}</strong>
-                    <span>intersecciones</span>
-                  </div>
-                </div>
-                <div class="summary-callout">
-                  <span class="summary-callout__step">01</span>
-                  <div>
-                    <strong>Seleccion</strong>
-                    <p>Elige solo lo necesario. Menos ruido produce scripts mas consistentes.</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section class="selection-card">
-              <div class="selection-card__head">
-                <div>
-                  <p class="label">Tablas</p>
-                  <p class="muted">Marca solo las necesarias para generar DDL, relaciones, comentarios y plantillas de insercion.</p>
-                </div>
-                <button class="control control--sm control--ghost" type="button" on:click={toggleAll}>
-                  <ButtonIcon name="check"/>
-                  <span>{selectedCount === totalSelectable ? "Desmarcar todo" : "Marcar todo"}</span>
-                </button>
-              </div>
-
-              <div class="selection-list">
-                {#if entities.length > 0}
-                  <div class="list-section">
-                    <p class="list-title">Entidades fuertes</p>
-                    {#each entities as entity}
-                      <label class={`entity-row ${selectedIds.has(entity.Id) ? 'entity-row--selected' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(entity.Id)}
-                          on:change={() => toggleEntity(entity.Id)}
-                        />
-                        <div>
-                          <strong>{entity.Name}</strong>
-                          <span>{entity.Description || "Sin descripcion."}</span>
-                        </div>
-                      </label>
-                    {/each}
-                  </div>
-                {/if}
-
-                {#if intersectionEntities.length > 0}
-                  <div class="list-section">
-                    <p class="list-title">Tablas de interseccion</p>
-                    {#each intersectionEntities as item}
-                      <label class={`entity-row ${selectedIntersectionIds.has(item.Entity.Id) ? 'entity-row--selected' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIntersectionIds.has(item.Entity.Id)}
-                          on:change={() => toggleIntersection(item.Entity.Id)}
-                        />
-                        <div>
-                          <strong>{item.Entity.Name}</strong>
-                          <span>{item.Entity.Description || "Sin descripcion."}</span>
-                        </div>
-                      </label>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            </section>
-
-            {#if inlineErrorMessage}
-              <div class="notice notice--error">
-                <strong>Configuracion incompleta</strong>
-                <p>{inlineErrorMessage}</p>
-              </div>
-            {/if}
-          </section>
-        {:else if viewState === "loading"}
-          <section class="state-view state-view--loading" in:fade={{duration: 180}}>
-            <div class="loading-hero">
-              <div class="loader-orbit" aria-hidden="true">
-                <span class="loader-orbit__ring"></span>
-                <span class="loader-orbit__ring loader-orbit__ring--delayed"></span>
-                <span class="loader-orbit__core"></span>
-              </div>
-              <div class="loading-copy">
-                <p class="label">Pipeline en curso</p>
-                <h3>{activeStage.title}</h3>
-                <p>{activeStage.detail}</p>
-                <span class="loading-pulse">{loadingPulse}</span>
-              </div>
-            </div>
-
-            <div class="progress-shell" aria-hidden="true">
-              <div class="progress-bar">
-                <span class="progress-bar__fill" style={`transform: scaleX(${loadingProgress / 100});`}></span>
-              </div>
-              <span class="progress-value">{Math.round(loadingProgress)}%</span>
-            </div>
-
-            <div class="pipeline-list">
-              {#each pipelineStages as stage, index}
-                <article class={`pipeline-item ${index < loadingStageIndex ? 'pipeline-item--done' : ''} ${index === loadingStageIndex ? 'pipeline-item--active' : ''}`}>
-                  <span class="pipeline-item__index">0{index + 1}</span>
-                  <div>
-                    <strong>{stage.title}</strong>
-                    <p>{stage.detail}</p>
-                  </div>
-                </article>
               {/each}
-            </div>
-          </section>
-        {:else if viewState === "result" && generatedResult}
-          <section class="state-view state-view--result" in:fade={{duration: 180}}>
-            <div class="result-banner">
-              <div>
-                <p class="label">Salida final</p>
-                <h3>Scripts generados para {generatedResult.Database}</h3>
-                <p class="muted">Subconjunto: {selectedCount} tablas | Modelo IA: {generatedResult.Model}</p>
-              </div>
-              <div class="result-banner__actions">
-                <button class="control control--sm control--ghost" type="button" on:click={copyJSON}>
-                  <ButtonIcon name="copy"/>
-                  <span>Copiar JSON</span>
-                </button>
-                <button class="control control--sm control--accent" type="button" on:click={copyGeneratedScript}>
-                  <ButtonIcon name="copy"/>
-                  <span>Copiar script</span>
-                </button>
-              </div>
-            </div>
-
-            {#if generatedResult.AIError}
-              <div class="notice notice--soft">
-                <strong>SQL con IA no disponible</strong>
-                <p>{generatedResult.AIError}</p>
-              </div>
-            {/if}
-
-            <div class="result-grid">
-              <aside class="result-sidecard">
-                <p class="label">Resumen</p>
-                <div class="result-metrics">
-                  <div>
-                    <strong>{selectedCount}</strong>
-                    <span>tablas</span>
-                  </div>
-                  <div>
-                    <strong>{generatedResult.Database}</strong>
-                    <span>motor</span>
-                  </div>
-                  <div>
-                    <strong>{hasAISQL ? "si" : "no"}</strong>
-                    <span>sql IA</span>
-                  </div>
-                </div>
-                <div class="summary-callout">
-                  <span class="summary-callout__step">03</span>
-                  <div>
-                    <strong>Resultado</strong>
-                    <p>El script local incluye tablas, relaciones, comentarios y plantillas INSERT para arrancar sin depender de la IA.</p>
-                  </div>
-                </div>
-              </aside>
-
-              <section class="result-card">
-                <div class="result-card__head">
-                  <div>
-                    <p class="label">Script</p>
-                    <p class="muted">Revisa el DDL antes de llevarlo a produccion.</p>
-                  </div>
-                  <div class="result-tabs">
-                    <button
-                      class={`control control--sm ${resultView === 'generated' ? 'control--accent' : 'control--ghost'}`}
-                      type="button"
-                      on:click={() => resultView = "generated"}
-                    >
-                      <span>Generado</span>
-                    </button>
-                    <button
-                      class={`control control--sm ${resultView === 'ai' ? 'control--accent' : 'control--ghost'}`}
-                      type="button"
-                      on:click={() => resultView = "ai"}
-                      disabled={!hasAISQL}
-                    >
-                      <span>IA</span>
-                    </button>
-                    {#if resultView === "ai" && hasAISQL}
-                      <button class="control control--sm control--ghost" type="button" on:click={copySQL}>
-                        <ButtonIcon name="copy"/>
-                        <span>Copiar SQL IA</span>
-                      </button>
-                    {/if}
-                  </div>
-                </div>
-                {#if resultView === "generated"}
-                  <pre class="sql-output"><code>{generatedResult.GeneratedScript}</code></pre>
-                {:else if hasAISQL}
-                  <pre class="sql-output"><code>{generatedResult.SQL}</code></pre>
-                {:else}
-                  <div class="notice notice--soft">
-                    <strong>Sin salida de IA</strong>
-                    <p>La corrida genero el script local correctamente, pero no hay SQL adicional de IA para mostrar.</p>
-                  </div>
-                {/if}
-              </section>
-            </div>
-          </section>
-        {:else if viewState === "error"}
-          <section class="state-view state-view--error" in:fade={{duration: 180}}>
-            <div class="error-stage">
-              <div class="error-stage__badge">
-                <ButtonIcon name="close"/>
-              </div>
-              <p class="label">Pipeline interrumpido</p>
-              <h3>No pudimos cerrar la corrida</h3>
-              <p class="error-stage__copy">{pipelineErrorMessage || "La generacion se detuvo antes de producir SQL utilizable."}</p>
-              <div class="notice notice--soft">
-                <strong>Que puedes hacer ahora</strong>
-                <p>Reintentar con la misma seleccion o volver al paso anterior para ajustar tablas, motor o API key.</p>
-              </div>
-            </div>
-          </section>
-        {/if}
+              {#each intersectionEntities as ie}
+                <label class={cn("flex items-center gap-3 p-2 rounded-lg border border-transparent hover:bg-muted/30 cursor-pointer", selectedIntersectionIds.has(ie.Entity.Id) && "bg-accent/5 border-accent/20")}>
+                  <input type="checkbox" checked={selectedIntersectionIds.has(ie.Entity.Id)} onchange={() => toggleIntersection(ie.Entity.Id)} class="size-3.5" />
+                  <span class="text-xs font-bold leading-none italic truncate">{ie.Entity.Name}</span>
+                </label>
+              {/each}
+           </div>
+        </div>
       </div>
+    {:else if viewState === "loading"}
+      <div class="flex flex-col items-center py-12 gap-8" in:fade>
+        <div class="relative size-24">
+          <CircleNotch class="size-24 text-accent animate-spin" />
+          <div class="absolute inset-0 flex items-center justify-center">
+            <span class="text-xs font-bold">{Math.round(loadingProgress)}%</span>
+          </div>
+        </div>
+        <div class="text-center">
+           <h3 class="text-lg font-bold">{activeStage.title}</h3>
+           <p class="text-sm text-foreground-alt">{activeStage.detail}</p>
+        </div>
+        <div class="w-64 h-1.5 bg-muted rounded-full overflow-hidden">
+           <div class="h-full bg-accent transition-all duration-300" style="width: {loadingProgress}%"></div>
+        </div>
+      </div>
+    {:else if viewState === "result" && generatedResult}
+      <div class="flex flex-col gap-4" in:fade>
+        <div class="flex items-center justify-between">
+          <div class="flex gap-2 p-1 bg-muted rounded-lg">
+            <button 
+              class={cn("px-4 py-1.5 text-xs font-bold rounded-md transition-all", resultView === 'generated' ? "bg-background shadow-mini text-accent" : "text-muted-foreground")}
+              onclick={() => resultView = "generated"}
+            >Generado</button>
+            <button 
+              class={cn("px-4 py-1.5 text-xs font-bold rounded-md transition-all", resultView === 'ai' ? "bg-background shadow-mini text-accent" : "text-muted-foreground")}
+              onclick={() => resultView = "ai"}
+              disabled={!hasAISQL}
+            >IA SQL</button>
+          </div>
+          <div class="flex gap-2">
+            <button class="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 border border-border-card rounded-md hover:bg-muted transition-colors" onclick={() => copyText(generatedResult.ExportJSON, "JSON copiado")}>
+              <DatabaseIcon class="size-3" /> JSON
+            </button>
+            <button class="flex items-center gap-1.5 text-[10px] font-bold px-4 py-1.5 bg-dark text-background rounded-md hover:bg-dark/90" onclick={() => copyText(resultView === 'generated' ? generatedResult.GeneratedScript : generatedResult.SQL, "Script copiado")}>
+              <Copy class="size-3" /> Copiar Script
+            </button>
+          </div>
+        </div>
 
-      <footer class="modal-footer">
-        {#if viewState === "select"}
-          <button class="control control--ghost" type="button" on:click={closeDialog} disabled={settingsBusy}>
-            <ButtonIcon name="close"/>
-            <span>Cerrar</span>
-          </button>
-          <button class="control control--accent" type="button" on:click={handleGenerate} disabled={!canGenerate}>
-            <ButtonIcon name="spark"/>
-            <span>Generar scripts</span>
-          </button>
-        {:else if viewState === "loading"}
-          <span class="footer-status">Generando script local y preparando salida adicional de IA si esta configurada.</span>
-        {:else if viewState === "result"}
-          <button class="control control--ghost" type="button" on:click={closeDialog}>
-            <ButtonIcon name="close"/>
-            <span>Cerrar</span>
-          </button>
-          <button class="control control--soft" type="button" on:click={returnToSelection}>
-            <ButtonIcon name="arrow-left"/>
-            <span>Nueva corrida</span>
-          </button>
-        {:else}
-          <button class="control control--ghost" type="button" on:click={returnToSelection}>
-            <ButtonIcon name="arrow-left"/>
-            <span>Volver a seleccion</span>
-          </button>
-          <button class="control control--accent" type="button" on:click={retryFromError}>
-            <ButtonIcon name="spark"/>
-            <span>Reintentar</span>
-          </button>
-        {/if}
-      </footer>
-    </div>
+        <div class="bg-dark rounded-card-sm p-4 h-[400px] overflow-hidden">
+          <pre class="text-[12px] font-mono text-[#4fc1ff] h-full overflow-auto custom-scrollbar"><code>{resultView === 'generated' ? generatedResult.GeneratedScript : generatedResult.SQL}</code></pre>
+        </div>
+      </div>
+    {:else if viewState === "error"}
+       <div class="flex flex-col items-center justify-center py-16 gap-4 text-center">
+          <div class="size-16 rounded-full bg-destructive/10 flex items-center justify-center text-destructive mb-2">
+             <WarningCircle class="size-10" />
+          </div>
+          <h3 class="text-xl font-bold">Error en la exportación</h3>
+          <p class="text-sm text-foreground-alt max-w-[300px]">{pipelineErrorMessage}</p>
+       </div>
+    {/if}
   </div>
-{/if}
+
+  {#snippet footer()}
+    <div class="flex w-full justify-between items-center mt-4">
+      {#if viewState === "select"}
+        <button class="h-11 px-6 text-sm font-semibold text-foreground-alt hover:bg-muted rounded-input" onclick={closeDialog}>Cerrar</button>
+        <button class="h-11 px-10 bg-dark text-background text-sm font-bold rounded-input shadow-mini hover:bg-dark/90 active:scale-[0.98] disabled:opacity-50" onclick={handleGenerate} disabled={!canGenerate}>
+           <Sparkle class="size-4 mr-2" /> Generar Scripts
+        </button>
+      {:else if viewState === "loading"}
+         <div class="flex-1 text-center py-2 text-[10px] font-black uppercase text-muted-foreground tracking-tighter animate-pulse">
+            El servidor wails está procesando el esquema...
+         </div>
+      {:else if viewState === "result"}
+        <button class="h-11 px-6 text-sm font-semibold text-foreground-alt hover:bg-muted rounded-input flex items-center gap-2" onclick={returnToSelection}>
+          <ArrowLeft class="size-4" /> Nueva corrida
+        </button>
+        <button class="h-11 px-10 bg-dark text-background text-sm font-bold rounded-input shadow-mini" onclick={closeDialog}>Listo</button>
+      {:else}
+        <button class="h-11 px-6 text-sm font-semibold text-foreground-alt hover:bg-muted rounded-input" onclick={returnToSelection}>Atrás</button>
+        <button class="h-11 px-10 bg-destructive text-white text-sm font-bold rounded-input" onclick={handleGenerate}>Reintentar</button>
+      {/if}
+    </div>
+  {/snippet}
+</Modal>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: var(--layer-modal);
-    display: grid;
-    place-items: center;
-    padding: 1rem;
-    background: var(--overlay-scrim);
-    backdrop-filter: blur(10px);
-  }
-
-  .modal-shell {
-    width: min(920px, 100%);
-    height: min(82vh, 760px);
-    max-height: min(82vh, 760px);
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    gap: 1rem;
-    padding: 1rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 10%, transparent), transparent 32%),
-      var(--popover-surface);
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
-  }
-
-  .modal-head,
-  .config-card__head,
-  .selection-card__head,
-  .result-card__head,
-  .modal-footer,
-  .config-actions,
-  .settings-actions,
-  .result-banner,
-  .result-banner__actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .modal-kicker,
-  .label,
-  .list-title {
-    margin: 0;
-    color: var(--accent);
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-  }
-
-  .modal-head h2,
-  .loading-copy h3,
-  .result-banner h3,
-  .error-stage h3 {
-    margin: 0.35rem 0 0;
-    font-size: clamp(1.45rem, 3vw, 2.1rem);
-    line-height: 1;
-  }
-
-  .modal-hint,
-  .muted,
-  .selection-hint,
-  .settings-note,
-  .model-note,
-  .entity-row span,
-  .loading-copy p,
-  .pipeline-item p,
-  .summary-callout p,
-  .error-stage__copy,
-  .notice p {
-    margin: 0;
-    color: var(--ink-faint);
-  }
-
-  .modal-body {
-    overflow: auto;
-    min-height: 0;
-    padding-right: 0.15rem;
-  }
-
-  .state-view {
-    display: grid;
-    gap: 1rem;
-    min-height: 100%;
-    align-content: start;
-  }
-
-  .top-grid,
-  .result-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(15rem, 0.72fr);
-    gap: 1rem;
-  }
-
-  .config-card,
-  .summary-card,
-  .selection-card,
-  .result-card,
-  .result-sidecard,
-  .settings-panel,
-  .notice {
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-md) - 4px);
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-  }
-
-  .config-card,
-  .summary-card,
-  .selection-card,
-  .result-card,
-  .result-sidecard {
-    padding: 1rem;
-  }
-
-  .field {
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  .field span {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--ink-soft);
-  }
-
-  .field input,
-  .field select {
-    width: 100%;
-    min-height: 2.8rem;
-    box-sizing: border-box;
-    border-radius: 0.9rem;
-    border: 1px solid var(--border);
-    background: var(--field-surface);
-    color: var(--ink);
-    padding: 0.8rem 0.95rem;
-    font-size: 0.95rem;
-    outline: none;
-    transition: border 140ms ease, box-shadow 140ms ease, background 140ms ease;
-  }
-
-  .field input:focus,
-  .field select:focus {
-    border-color: var(--focus-border);
-    box-shadow: var(--focus-ring);
-    background: var(--field-surface-focus);
-  }
-
-  .status-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 1.9rem;
-    padding: 0 0.7rem;
-    border-radius: 999px;
-    border: 1px solid var(--line-soft);
-    font-size: 0.74rem;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .status-chip--ok {
-    background: color-mix(in srgb, var(--success) 14%, var(--surface-strong));
-    color: color-mix(in srgb, var(--success) 70%, var(--ink));
-  }
-
-  .status-chip--warn {
-    background: color-mix(in srgb, var(--danger) 10%, var(--surface-strong));
-    color: color-mix(in srgb, var(--danger) 80%, var(--ink));
-  }
-
-  .settings-panel {
-    display: grid;
-    gap: 0.8rem;
-    margin-top: 0.9rem;
-    padding: 0.9rem;
-  }
-
-  .summary-stats,
-  .result-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
-    margin-top: 0.8rem;
-  }
-
-  .result-metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .summary-stats div,
-  .result-metrics div {
-    display: grid;
-    gap: 0.2rem;
-    padding: 0.8rem 0.85rem;
-    border-radius: 0.9rem;
-    background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
-    border: 1px solid var(--line-soft);
-  }
-
-  .summary-stats strong,
-  .result-metrics strong {
-    font-size: 1.25rem;
-    line-height: 1;
-    color: var(--ink);
-  }
-
-  .summary-stats span,
-  .result-metrics span {
-    color: var(--ink-faint);
-    font-size: 0.78rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .summary-callout {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.75rem;
-    align-items: start;
-    margin-top: 0.95rem;
-    padding: 0.9rem;
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong));
-    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
-  }
-
-  .summary-callout__step,
-  .pipeline-item__index {
-    display: inline-grid;
-    place-items: center;
-    width: 2.2rem;
-    height: 2.2rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-weight: 800;
-    letter-spacing: 0.06em;
-  }
-
-  .summary-callout strong,
-  .pipeline-item strong,
-  .entity-row strong,
-  .model-note,
-  .notice strong,
-  .loading-pulse {
-    color: var(--ink-soft);
-    font-size: 0.86rem;
-    font-weight: 800;
-  }
-
-  .selection-list {
-    display: grid;
-    gap: 1rem;
-    margin-top: 0.9rem;
-  }
-
-  .list-section {
-    display: grid;
-    gap: 0.55rem;
-  }
-
-  .entity-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.75rem;
-    align-items: flex-start;
-    padding: 0.72rem 0.8rem;
-    border-radius: 0.9rem;
-    border: 1px solid var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 84%, transparent);
-    transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-  }
-
-  .entity-row:hover {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
-  }
-
-  .entity-row--selected {
-    background: color-mix(in srgb, var(--accent) 11%, var(--surface-strong));
-    border-color: color-mix(in srgb, var(--accent) 20%, var(--border));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-
-  .entity-row input {
-    margin-top: 0.25rem;
-  }
-
-  .entity-row div {
-    display: grid;
-    gap: 0.16rem;
-  }
-
-  .notice {
-    display: grid;
-    gap: 0.3rem;
-    padding: 0.9rem 1rem;
-  }
-
-  .notice--error {
-    border-color: color-mix(in srgb, var(--danger) 20%, var(--border));
-    background: color-mix(in srgb, var(--danger) 10%, var(--surface-strong));
-  }
-
-  .notice--soft {
-    border-color: var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
-  }
-
-  .result-tabs {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .state-view--loading,
-  .state-view--error {
-    align-content: center;
-    min-height: 100%;
-    padding: 0.2rem 0.05rem 0.35rem;
-  }
-
-  .loading-hero {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 1.25rem;
-    align-items: center;
-    padding: 1.15rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-lg) - 6px);
-    background:
-      radial-gradient(circle at center, color-mix(in srgb, var(--accent) 12%, transparent), transparent 58%),
-      color-mix(in srgb, var(--surface-strong) 92%, transparent);
-  }
-
-  .loader-orbit {
-    position: relative;
-    width: 7.4rem;
-    height: 7.4rem;
-    display: grid;
-    place-items: center;
-  }
-
-  .loader-orbit__ring,
-  .loader-orbit__ring--delayed {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
-    animation: ripple 1.8s cubic-bezier(.19, 1, .22, 1) infinite;
-  }
-
-  .loader-orbit__ring--delayed {
-    animation-delay: 0.4s;
-  }
-
-  .loader-orbit__core {
-    width: 2.3rem;
-    height: 2.3rem;
-    border-radius: 50%;
-    background:
-      radial-gradient(circle at 35% 35%, color-mix(in srgb, white 42%, var(--accent) 8%), transparent 45%),
-      linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--surface-strong)), color-mix(in srgb, var(--accent) 30%, var(--surface-strong)));
-    box-shadow:
-      0 0 0 0.65rem color-mix(in srgb, var(--accent) 8%, transparent),
-      0 18px 36px color-mix(in srgb, var(--accent) 16%, transparent);
-    animation: pulseCore 1.35s ease-in-out infinite;
-  }
-
-  .loading-copy {
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  .loading-pulse {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    margin-top: 0.2rem;
-  }
-
-  .loading-pulse::before {
-    content: "";
-    width: 0.55rem;
-    height: 0.55rem;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--accent) 62%, var(--surface-strong));
-    box-shadow: 0 0 0 0.24rem color-mix(in srgb, var(--accent) 14%, transparent);
-    animation: blink 1.1s ease-in-out infinite;
-  }
-
-  .progress-shell {
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  .progress-bar {
-    position: relative;
-    overflow: hidden;
-    height: 0.72rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-strong) 78%, var(--ink) 4%);
-    border: 1px solid var(--line-soft);
-  }
-
-  .progress-bar__fill {
-    position: absolute;
-    inset: 0;
-    transform-origin: left center;
-    background:
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 42%, var(--surface-strong)), color-mix(in srgb, var(--accent) 70%, var(--surface-strong)));
-    border-radius: inherit;
-    transition: transform 220ms ease-out;
-  }
-
-  .progress-bar__fill::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.58), transparent);
-    transform: translateX(-100%);
-    animation: shimmer 1.4s linear infinite;
-  }
-
-  .progress-value {
-    justify-self: end;
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    font-weight: 800;
-  }
-
-  .pipeline-list {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .pipeline-item {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.85rem;
-    align-items: start;
-    padding: 0.85rem 0.95rem;
-    border-radius: 1rem;
-    border: 1px solid var(--line-soft);
-    background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
-    transition: transform 220ms ease, border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
-  }
-
-  .pipeline-item--active {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    box-shadow: 0 18px 32px color-mix(in srgb, var(--accent) 10%, transparent);
-  }
-
-  .pipeline-item--done {
-    border-color: color-mix(in srgb, var(--success) 20%, var(--border));
-  }
-
-  .pipeline-item--done .pipeline-item__index {
-    background: color-mix(in srgb, var(--success) 18%, var(--surface-strong));
-    color: color-mix(in srgb, var(--success) 74%, var(--ink));
-  }
-
-  .result-banner {
-    padding: 1rem 1.05rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-lg) - 6px);
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--surface-strong)), color-mix(in srgb, var(--surface-strong) 92%, transparent));
-  }
-
-  .sql-output {
-    margin: 0.9rem 0 0;
-    max-height: min(25rem, 42vh);
-    overflow: auto;
-    padding: 1rem;
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
-    border: 1px solid var(--line-soft);
-    color: var(--ink);
-    white-space: pre;
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
-  }
-
-  .error-stage {
-    display: grid;
-    gap: 0.8rem;
-    justify-items: center;
-    text-align: center;
-    padding: 1.4rem 1rem;
-  }
-
-  .error-stage__badge {
-    display: grid;
-    place-items: center;
-    width: 4rem;
-    height: 4rem;
-    border-radius: 1.4rem;
-    border: 1px solid color-mix(in srgb, var(--danger) 18%, var(--border));
-    background: color-mix(in srgb, var(--danger) 10%, var(--surface-strong));
-    color: color-mix(in srgb, var(--danger) 84%, var(--ink));
-  }
-
-  .error-stage__copy {
-    max-width: 42rem;
-    font-size: 1rem;
-    line-height: 1.6;
-  }
-
-  .modal-footer {
-    padding-top: 0.2rem;
-    border-top: 1px solid var(--line-soft);
-    min-height: 3.2rem;
-  }
-
-  .footer-status {
-    color: var(--ink-faint);
-    font-size: 0.9rem;
-    font-weight: 700;
-  }
-
-  @keyframes ripple {
-    0% {
-      opacity: 0;
-      transform: scale(0.76);
-    }
-    25% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
-      transform: scale(1.08);
-    }
-  }
-
-  @keyframes pulseCore {
-    0%, 100% {
-      transform: scale(0.96);
-    }
-    50% {
-      transform: scale(1.04);
-    }
-  }
-
-  @keyframes shimmer {
-    to {
-      transform: translateX(100%);
-    }
-  }
-
-  @keyframes blink {
-    0%, 100% {
-      opacity: 0.55;
-    }
-    50% {
-      opacity: 1;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .loader-orbit__ring,
-    .loader-orbit__ring--delayed,
-    .loader-orbit__core,
-    .loading-pulse::before,
-    .progress-bar__fill::after {
-      animation: none;
-    }
-
-    .entity-row,
-    .pipeline-item,
-    .progress-bar__fill {
-      transition: none;
-    }
-  }
-
-  @media (max-width: 860px) {
-    .top-grid,
-    .result-grid,
-    .summary-stats,
-    .result-metrics,
-    .loading-hero {
-      grid-template-columns: 1fr;
-    }
-
-    .loader-orbit {
-      margin: 0 auto;
-    }
-  }
-
-  @media (max-width: 720px) {
-    .modal-shell {
-      padding: 0.9rem;
-      border-radius: var(--radius-md);
-      width: min(100%, 100%);
-      height: min(88vh, 100%);
-      max-height: min(88vh, 100%);
-    }
-
-    .modal-footer {
-      flex-direction: column-reverse;
-      align-items: stretch;
-    }
-
-    .result-banner__actions {
-      width: 100%;
-    }
-
-    .result-tabs {
-      width: 100%;
-      justify-content: stretch;
-    }
-  }
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 </style>

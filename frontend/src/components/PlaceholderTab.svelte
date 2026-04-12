@@ -1,5 +1,5 @@
 <script lang="ts">
-  export let message = "Contenido pendiente para esta pestaña.";
+  let { message = "Contenido pendiente para esta pestaña." } = $props<{ message?: string }>();
 </script>
 
 <div class="empty-panel">

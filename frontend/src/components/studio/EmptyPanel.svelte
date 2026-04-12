@@ -1,6 +1,5 @@
 <script lang="ts">
-  export let message: string;
-  export let description: string = "";
+  let { message, description = "" } = $props<{ message: string; description?: string }>();
 </script>
 
 <div class="studio-empty-panel">

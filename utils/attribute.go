@@ -54,7 +54,7 @@ func defaultAttributeType(value string) string {
 
 func normalizeAttributeKeyType(value AttributeKeyType) AttributeKeyType {
 	switch value {
-	case AttributeKeyPK, AttributeKeyNone:
+	case AttributeKeyPK, AttributeKeyFK, AttributeKeyNone:
 		return value
 	default:
 		return AttributeKeyNone

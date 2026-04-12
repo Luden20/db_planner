@@ -2,7 +2,7 @@
   import { flip } from "svelte/animate";
   import { quintOut } from "svelte/easing";
   import { fade, fly, scale } from "svelte/transition";
-  import { tick } from "svelte";
+  import { tick, onMount } from "svelte";
   import {
     AddBigProcess,
     AddProcess,
@@ -26,66 +26,67 @@
   import ModalLauncher from "./ModalLauncher.svelte";
   import { showToast } from "../lib/toast";
 
-  type ResourceDraft = {
-    tableId: number;
-    role: string;
-  };
+  type ResourceDraft = { tableId: number; role: string; };
+  type ViewTransitionDocument = Document & { startViewTransition?: (update: () => void | Promise<void>) => { finished: Promise<void>; }; };
 
-  type ViewTransitionDocument = Document & {
-    startViewTransition?: (update: () => void | Promise<void>) => {
-      finished: Promise<void>;
-    };
-  };
-
-  export let project: utils.DbProject;
-  export let entities: utils.Entity[] = [];
-  export let onRefresh: () => Promise<void> = async () => {};
+  let { 
+    project, 
+    entities = [], 
+    onRefresh = async () => {} 
+  } = $props<{
+    project: utils.DbProject;
+    entities?: utils.Entity[];
+    onRefresh?: () => Promise<void>;
+  }>();
 
   const resourceRoles = ["Input", "Output"];
 
-  let selectedBigProcessId: number | null = null;
-  let selectedProcessId: number | null = null;
-  let selectedStepId: number | null = null;
+  let selectedBigProcessId = $state<number | null>(null);
+  let selectedProcessId = $state<number | null>(null);
+  let selectedStepId = $state<number | null>(null);
 
   let lastBigProcessSyncId: number | null = null;
   let lastProcessSyncId: number | null = null;
-  let lastStepSyncId: number | null = null;
-  let lastResourceSignature = "";
+  let lastStepSyncId = $state<number | null>(null);
+  let lastResourceSignature = $state("");
 
-  let bigProcessDraftName = "";
-  let bigProcessDraftDescription = "";
-  let processDraftName = "";
-  let processDraftDescription = "";
-  let stepDraftName = "";
-  let stepDraftDescription = "";
+  let bigProcessDraftName = $state("");
+  let bigProcessDraftDescription = $state("");
+  let processDraftName = $state("");
+  let processDraftDescription = $state("");
+  let stepDraftName = $state("");
+  let stepDraftDescription = $state("");
 
-  let newBigProcessName = "";
-  let newBigProcessDescription = "";
-  let newProcessName = "";
-  let newProcessDescription = "";
-  let newStepName = "";
-  let newStepDescription = "";
-  let newResourceTableId: number | null = null;
-  let newResourceRole = "Input";
+  let newBigProcessName = $state("");
+  let newBigProcessDescription = $state("");
+  let newProcessName = $state("");
+  let newProcessDescription = $state("");
+  let newStepName = $state("");
+  let newStepDescription = $state("");
+  let newResourceTableId = $state<number | null>(null);
+  let newResourceRole = $state("Input");
 
-  let resourceEdits: Record<number, ResourceDraft> = {};
-  let busySection: string | null = null;
-  let draggingBigProcessId: number | null = null;
-  let hoverBigProcessId: number | null = null;
-  let draggingProcessId: number | null = null;
-  let hoverProcessId: number | null = null;
-  let draggingStepId: number | null = null;
-  let hoverStepId: number | null = null;
-  let autoScrollFrame: number | null = null;
-  let autoScrollDirection: -1 | 0 | 1 = 0;
+  let resourceEdits = $state<Record<number, ResourceDraft>>({});
+  let busySection = $state<string | null>(null);
+  let draggingBigProcessId = $state<number | null>(null);
+  let hoverBigProcessId = $state<number | null>(null);
+  let draggingProcessId = $state<number | null>(null);
+  let hoverProcessId = $state<number | null>(null);
+  let draggingStepId = $state<number | null>(null);
+  let hoverStepId = $state<number | null>(null);
+  let autoScrollDirection = $state<-1 | 0 | 1>(0);
 
   const AUTO_SCROLL_EDGE_PX = 96;
   const AUTO_SCROLL_STEP = 18;
 
-  const prefersReducedMotion = () =>
-    typeof window !== "undefined"
-    && typeof window.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const bigProcesses = $derived(project?.BigProcesses ?? []);
+  const currentBigProcess = $derived(bigProcesses.find((item) => item.Id === selectedBigProcessId) ?? null);
+  const currentProcesses = $derived(currentBigProcess?.Processes ?? []);
+  const currentProcess = $derived(currentProcesses.find((item) => item.Id === selectedProcessId) ?? null);
+  const currentSteps = $derived(currentProcess?.Steps ?? []);
+  const currentStep = $derived(currentSteps.find((item) => item.Id === selectedStepId) ?? null);
+
+  const prefersReducedMotion = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const runStageTransition = async (update: () => void | Promise<void>) => {
     const doc = typeof document !== "undefined" ? (document as ViewTransitionDocument) : null;
@@ -94,17 +95,13 @@
         const transition = doc.startViewTransition(update);
         await transition.finished;
         return;
-      } catch (err) {
-        console.warn("No se pudo aplicar la transición de vista:", err);
-      }
+      } catch (err) { console.warn("No se pudo aplicar la transición de vista:", err); }
     }
     await update();
   };
 
   const extractError = (err: unknown) => {
-    if (typeof err === "string") {
-      return err;
-    }
+    if (typeof err === "string") return err;
     if (err && typeof err === "object") {
       const maybeRecord = err as Record<string, unknown>;
       return String(maybeRecord.error ?? maybeRecord.message ?? "Error desconocido");
@@ -112,57 +109,29 @@
     return "Error desconocido";
   };
 
-  const entityLabel = (entityId: number) =>
-    entities.find((entity) => entity.Id === entityId)?.Name ?? `Tabla ${entityId}`;
-
-  const entityDescription = (entityId: number) =>
-    entities.find((entity) => entity.Id === entityId)?.Description ?? "Sin detalle de la tabla.";
-
-  const countProcessResources = (process: utils.Process) =>
-    (process.Steps ?? []).reduce((sum, step) => sum + (step.Resources?.length ?? 0), 0);
-
-  const countBigProcessSteps = (bigProcess: utils.BigProcess) =>
-    (bigProcess.Processes ?? []).reduce((sum, process) => sum + (process.Steps?.length ?? 0), 0);
-
-  const countBigProcessResources = (bigProcess: utils.BigProcess) =>
-    (bigProcess.Processes ?? []).reduce((sum, process) => sum + countProcessResources(process), 0);
-
-  const getStepResourcesByRole = (step: utils.Step | null, role: string) =>
-    (step?.Resources ?? []).filter((resource) => resource.Role === role);
+  const entityLabel = (entityId: number) => entities.find((e) => e.Id === entityId)?.Name ?? `Tabla ${entityId}`;
+  const entityDescription = (entityId: number) => entities.find((e) => e.Id === entityId)?.Description ?? "Sin detalle de la tabla.";
+  const countProcessResources = (p: utils.Process) => (p.Steps ?? []).reduce((sum, s) => sum + (s.Resources?.length ?? 0), 0);
+  const countBigProcessSteps = (bp: utils.BigProcess) => (bp.Processes ?? []).reduce((sum, p) => sum + (p.Steps?.length ?? 0), 0);
+  const countBigProcessResources = (bp: utils.BigProcess) => (bp.Processes ?? []).reduce((sum, p) => sum + countProcessResources(p), 0);
+  const getStepResourcesByRole = (s: utils.Step | null, r: string) => (s?.Resources ?? []).filter((res) => res.Role === r);
 
   const updateResourceDraft = (resourceId: number, patch: Partial<ResourceDraft>) => {
-    resourceEdits = {
-      ...resourceEdits,
-      [resourceId]: {
-        ...(resourceEdits[resourceId] ?? {
-          tableId: entities[0]?.Id ?? 0,
-          role: "Input"
-        }),
-        ...patch
-      }
-    };
+    resourceEdits[resourceId] = { ...(resourceEdits[resourceId] ?? { tableId: entities[0]?.Id ?? 0, role: "Input" }), ...patch };
   };
 
   const handleResourceTableChange = (resourceId: number, event: Event) => {
     const target = event.currentTarget as HTMLSelectElement;
-    updateResourceDraft(resourceId, {tableId: Number(target.value)});
+    updateResourceDraft(resourceId, { tableId: Number(target.value) });
   };
 
   const handleResourceRoleChange = (resourceId: number, event: Event) => {
     const target = event.currentTarget as HTMLSelectElement;
-    updateResourceDraft(resourceId, {role: target.value});
+    updateResourceDraft(resourceId, { role: target.value });
   };
 
-  const persistFlowChange = async (
-    action: () => Promise<void>,
-    successMessage: string,
-    busyKey = "flow",
-    options: { throwOnError?: boolean } = {}
-  ) => {
-    if (busySection !== null) {
-      return false;
-    }
-
+  const persistFlowChange = async (action: () => Promise<void>, successMessage: string, busyKey = "flow", options: { throwOnError?: boolean } = {}) => {
+    if (busySection !== null) return false;
     busySection = busyKey;
     try {
       await action();
@@ -174,291 +143,137 @@
     } catch (err) {
       const message = extractError(err);
       showToast(`No se pudo actualizar el flujo: ${message}`, "error");
-      if (options.throwOnError) {
-        throw new Error(message);
-      }
+      if (options.throwOnError) throw new Error(message);
       return false;
-    } finally {
-      busySection = null;
-    }
-  };
-
-  const runAutoScroll = () => {
-    if (autoScrollDirection === 0) {
-      autoScrollFrame = null;
-      return;
-    }
-    window.scrollBy({top: autoScrollDirection * AUTO_SCROLL_STEP, behavior: "auto"});
-    autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
-  };
-
-  const startAutoScroll = (direction: -1 | 1) => {
-    if (autoScrollDirection === direction && autoScrollFrame !== null) {
-      return;
-    }
-    autoScrollDirection = direction;
-    if (autoScrollFrame === null) {
-      autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
-    }
-  };
-
-  const stopAutoScroll = () => {
-    autoScrollDirection = 0;
-    if (autoScrollFrame !== null) {
-      window.cancelAnimationFrame(autoScrollFrame);
-      autoScrollFrame = null;
-    }
+    } finally { busySection = null; }
   };
 
   const updateAutoScroll = (event: DragEvent) => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (event.clientY <= AUTO_SCROLL_EDGE_PX) {
-      startAutoScroll(-1);
-      return;
-    }
-    if (event.clientY >= window.innerHeight - AUTO_SCROLL_EDGE_PX) {
-      startAutoScroll(1);
-      return;
-    }
-    stopAutoScroll();
+    if (typeof window === "undefined") return;
+    if (event.clientY <= AUTO_SCROLL_EDGE_PX) { autoScrollDirection = -1; }
+    else if (event.clientY >= window.innerHeight - AUTO_SCROLL_EDGE_PX) { autoScrollDirection = 1; }
+    else { autoScrollDirection = 0; }
   };
 
+  const stopAutoScroll = () => { autoScrollDirection = 0; };
+
   const reorderBigProcesses = async (fromId: number, toId: number) => {
-    if (fromId === toId) {
-      return;
-    }
+    if (fromId === toId) return;
     const fromIndex = bigProcesses.findIndex((item) => item.Id === fromId);
     const toIndex = bigProcesses.findIndex((item) => item.Id === toId);
-    if (fromIndex < 0 || toIndex < 0) {
-      return;
-    }
+    if (fromIndex < 0 || toIndex < 0) return;
     const direction: "up" | "down" = toIndex < fromIndex ? "up" : "down";
     const steps = Math.abs(toIndex - fromIndex);
     selectedBigProcessId = fromId;
     selectedProcessId = null;
     selectedStepId = null;
-    await persistFlowChange(
-      async () => {
-        for (let idx = 0; idx < steps; idx++) {
-          await MoveBigProcess(fromId, direction);
-        }
-      },
-      `Macroflujo movido hacia ${direction === "up" ? "arriba" : "abajo"}.`,
-      "drag-big-process"
-    );
+    await persistFlowChange(async () => { for (let idx = 0; idx < steps; idx++) await MoveBigProcess(fromId, direction); }, `Macroflujo movido hacia ${direction === "up" ? "arriba" : "abajo"}.`, "drag-big-process");
   };
 
   const reorderProcesses = async (fromId: number, toId: number) => {
-    if (!currentBigProcess || fromId === toId) {
-      return;
-    }
+    if (!currentBigProcess || fromId === toId) return;
     const fromIndex = currentProcesses.findIndex((item) => item.Id === fromId);
     const toIndex = currentProcesses.findIndex((item) => item.Id === toId);
-    if (fromIndex < 0 || toIndex < 0) {
-      return;
-    }
+    if (fromIndex < 0 || toIndex < 0) return;
     const direction: "up" | "down" = toIndex < fromIndex ? "up" : "down";
     const steps = Math.abs(toIndex - fromIndex);
     selectedProcessId = fromId;
     selectedStepId = null;
-    await persistFlowChange(
-      async () => {
-        for (let idx = 0; idx < steps; idx++) {
-          await MoveProcess(currentBigProcess.Id, fromId, direction);
-        }
-      },
-      `Proceso movido hacia ${direction === "up" ? "arriba" : "abajo"}.`,
-      "drag-process"
-    );
+    await persistFlowChange(async () => { for (let idx = 0; idx < steps; idx++) await MoveProcess(currentBigProcess!.Id, fromId, direction); }, `Proceso movido hacia ${direction === "up" ? "arriba" : "abajo"}.`, "drag-process");
   };
 
   const reorderSteps = async (fromId: number, toId: number) => {
-    if (!currentBigProcess || !currentProcess || fromId === toId) {
-      return;
-    }
+    if (!currentBigProcess || !currentProcess || fromId === toId) return;
     const fromIndex = currentSteps.findIndex((item) => item.Id === fromId);
     const toIndex = currentSteps.findIndex((item) => item.Id === toId);
-    if (fromIndex < 0 || toIndex < 0) {
-      return;
-    }
+    if (fromIndex < 0 || toIndex < 0) return;
     const direction: "up" | "down" = toIndex < fromIndex ? "up" : "down";
     const steps = Math.abs(toIndex - fromIndex);
     selectedStepId = fromId;
-    await persistFlowChange(
-      async () => {
-        for (let idx = 0; idx < steps; idx++) {
-          await MoveStep(currentBigProcess.Id, currentProcess.Id, fromId, direction);
-        }
-      },
-      `Paso movido hacia ${direction === "up" ? "arriba" : "abajo"}.`,
-      "drag-step"
-    );
+    await persistFlowChange(async () => { for (let idx = 0; idx < steps; idx++) await MoveStep(currentBigProcess!.Id, currentProcess!.Id, fromId, direction); }, `Paso movido hacia ${direction === "up" ? "arriba" : "abajo"}.`, "drag-step");
   };
 
   const startBigProcessDrag = (id: number, event: DragEvent) => {
-    if (busySection !== null) {
-      event.preventDefault();
-      return;
-    }
+    if (busySection !== null) { event.preventDefault(); return; }
     draggingBigProcessId = id;
     hoverBigProcessId = id;
     event.dataTransfer?.setData("text/plain", `${id}`);
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = "move";
-    }
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
   };
 
-  const handleBigProcessDragOver = (id: number, event: DragEvent) => {
-    event.preventDefault();
-    hoverBigProcessId = id;
-    updateAutoScroll(event);
-  };
-
+  const handleBigProcessDragOver = (id: number, event: DragEvent) => { event.preventDefault(); hoverBigProcessId = id; updateAutoScroll(event); };
   const handleBigProcessDrop = async (id: number, event: DragEvent) => {
     event.preventDefault();
-    if (draggingBigProcessId === null) {
-      return;
-    }
+    if (draggingBigProcessId === null) return;
     const draggingId = draggingBigProcessId;
     draggingBigProcessId = null;
     hoverBigProcessId = null;
     stopAutoScroll();
     await reorderBigProcesses(draggingId, id);
   };
-
-  const clearBigProcessDrag = () => {
-    draggingBigProcessId = null;
-    hoverBigProcessId = null;
-    stopAutoScroll();
-  };
+  const clearBigProcessDrag = () => { draggingBigProcessId = null; hoverBigProcessId = null; stopAutoScroll(); };
 
   const startProcessDrag = (id: number, event: DragEvent) => {
-    if (busySection !== null) {
-      event.preventDefault();
-      return;
-    }
+    if (busySection !== null) { event.preventDefault(); return; }
     draggingProcessId = id;
     hoverProcessId = id;
     event.dataTransfer?.setData("text/plain", `${id}`);
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = "move";
-    }
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
   };
-
-  const handleProcessDragOver = (id: number, event: DragEvent) => {
-    event.preventDefault();
-    hoverProcessId = id;
-    updateAutoScroll(event);
-  };
-
+  const handleProcessDragOver = (id: number, event: DragEvent) => { event.preventDefault(); hoverProcessId = id; updateAutoScroll(event); };
   const handleProcessDrop = async (id: number, event: DragEvent) => {
     event.preventDefault();
-    if (draggingProcessId === null) {
-      return;
-    }
+    if (draggingProcessId === null) return;
     const draggingId = draggingProcessId;
     draggingProcessId = null;
     hoverProcessId = null;
     stopAutoScroll();
     await reorderProcesses(draggingId, id);
   };
-
-  const clearProcessDrag = () => {
-    draggingProcessId = null;
-    hoverProcessId = null;
-    stopAutoScroll();
-  };
+  const clearProcessDrag = () => { draggingProcessId = null; hoverProcessId = null; stopAutoScroll(); };
 
   const startStepDrag = (id: number, event: DragEvent) => {
-    if (busySection !== null) {
-      event.preventDefault();
-      return;
-    }
+    if (busySection !== null) { event.preventDefault(); return; }
     draggingStepId = id;
     hoverStepId = id;
     event.dataTransfer?.setData("text/plain", `${id}`);
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = "move";
-    }
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
   };
-
-  const handleStepDragOver = (id: number, event: DragEvent) => {
-    event.preventDefault();
-    hoverStepId = id;
-    updateAutoScroll(event);
-  };
-
+  const handleStepDragOver = (id: number, event: DragEvent) => { event.preventDefault(); hoverStepId = id; updateAutoScroll(event); };
   const handleStepDrop = async (id: number, event: DragEvent) => {
     event.preventDefault();
-    if (draggingStepId === null) {
-      return;
-    }
+    if (draggingStepId === null) return;
     const draggingId = draggingStepId;
     draggingStepId = null;
     hoverStepId = null;
     stopAutoScroll();
     await reorderSteps(draggingId, id);
   };
+  const clearStepDrag = () => { draggingStepId = null; hoverStepId = null; stopAutoScroll(); };
 
-  const clearStepDrag = () => {
-    draggingStepId = null;
-    hoverStepId = null;
-    stopAutoScroll();
-  };
+  const selectBigProcess = async (bigProcessId: number) => { await runStageTransition(async () => { selectedBigProcessId = bigProcessId; selectedProcessId = null; selectedStepId = null; await tick(); }); };
+  const selectProcess = async (processId: number) => { await runStageTransition(async () => { selectedProcessId = processId; selectedStepId = null; await tick(); }); };
 
-  const selectBigProcess = async (bigProcessId: number) => {
-    await runStageTransition(async () => {
-      selectedBigProcessId = bigProcessId;
-      selectedProcessId = null;
-      selectedStepId = null;
-      await tick();
-    });
-  };
-
-  const selectProcess = async (processId: number) => {
-    await runStageTransition(async () => {
-      selectedProcessId = processId;
-      selectedStepId = null;
-      await tick();
-    });
-  };
-
-  const prepareBigProcessCreate = () => {
-    newBigProcessName = "";
-    newBigProcessDescription = "";
-  };
-
+  const prepareBigProcessCreate = () => { newBigProcessName = ""; newBigProcessDescription = ""; };
   const prepareProcessCreate = (bigProcessId = currentBigProcess?.Id ?? null) => {
-    if (bigProcessId === null) {
-      throw new Error("Primero crea o selecciona un macroflujo.");
-    }
+    if (bigProcessId === null) throw new Error("Primero crea o selecciona un macroflujo.");
     selectedBigProcessId = bigProcessId;
     selectedProcessId = null;
     selectedStepId = null;
     newProcessName = "";
     newProcessDescription = "";
   };
-
   const prepareStepCreate = (processId = currentProcess?.Id ?? null) => {
-    if (!currentBigProcess || processId === null) {
-      throw new Error("Primero activa un proceso para poder colgarle pasos.");
-    }
+    if (!currentBigProcess || processId === null) throw new Error("Primero activa un proceso para poder colgarle pasos.");
     selectedBigProcessId = currentBigProcess.Id;
     selectedProcessId = processId;
     selectedStepId = null;
     newStepName = "";
     newStepDescription = "";
   };
-
   const prepareResourceCreate = (processId = currentProcess?.Id ?? null, stepId = currentStep?.Id ?? null) => {
-    if (!currentBigProcess || processId === null || stepId === null) {
-      throw new Error("Activa un paso antes de vincular tablas.");
-    }
-    if (!entities.length) {
-      throw new Error("Necesitas entidades para vincular recursos.");
-    }
+    if (!currentBigProcess || processId === null || stepId === null) throw new Error("Activa un paso antes de vincular tablas.");
+    if (!entities.length) throw new Error("Necesitas entidades para vincular recursos.");
     selectedBigProcessId = currentBigProcess.Id;
     selectedProcessId = processId;
     selectedStepId = stepId;
@@ -468,377 +283,194 @@
 
   const handleAddBigProcess = async () => {
     const name = newBigProcessName.trim();
-    if (!name) {
-      throw new Error("Ingresa un nombre para el macroflujo.");
-    }
-
+    if (!name) throw new Error("Ingresa un nombre para el macroflujo.");
     const nextBigProcessId = (project?.BigProcessLastMax ?? 0) + 1;
     selectedBigProcessId = nextBigProcessId;
     selectedProcessId = null;
     selectedStepId = null;
-    await persistFlowChange(
-      () => AddBigProcess(name, newBigProcessDescription.trim()),
-      "Macroflujo creado.",
-      "add-big-process",
-      { throwOnError: true }
-    );
-    newBigProcessName = "";
-    newBigProcessDescription = "";
+    await persistFlowChange(() => AddBigProcess(name, newBigProcessDescription.trim()), "Macroflujo creado.", "add-big-process", { throwOnError: true });
+    newBigProcessName = ""; newBigProcessDescription = "";
   };
 
   const prepareBigProcessEdit = (bigProcess: utils.BigProcess) => {
-    selectedBigProcessId = bigProcess.Id;
-    selectedProcessId = null;
-    selectedStepId = null;
-    bigProcessDraftName = bigProcess.Name ?? "";
-    bigProcessDraftDescription = bigProcess.Description ?? "";
+    selectedBigProcessId = bigProcess.Id; selectedProcessId = null; selectedStepId = null;
+    bigProcessDraftName = bigProcess.Name ?? ""; bigProcessDraftDescription = bigProcess.Description ?? "";
   };
 
   const handleSaveBigProcess = async (bigProcessId = currentBigProcess?.Id ?? null) => {
-    if (bigProcessId === null) {
-      throw new Error("Selecciona un macroflujo para editarlo.");
-    }
+    if (bigProcessId === null) throw new Error("Selecciona un macroflujo para editarlo.");
     const name = bigProcessDraftName.trim();
-    if (!name) {
-      throw new Error("El macroflujo necesita un nombre.");
-    }
-    selectedBigProcessId = bigProcessId;
-    selectedProcessId = null;
-    selectedStepId = null;
-    await persistFlowChange(
-      () => EditBigProcess(bigProcessId, name, bigProcessDraftDescription.trim()),
-      "Macroflujo actualizado.",
-      "edit-big-process",
-      { throwOnError: true }
-    );
+    if (!name) throw new Error("El macroflujo necesita un nombre.");
+    selectedBigProcessId = bigProcessId; selectedProcessId = null; selectedStepId = null;
+    await persistFlowChange(() => EditBigProcess(bigProcessId, name, bigProcessDraftDescription.trim()), "Macroflujo actualizado.", "edit-big-process", { throwOnError: true });
   };
 
   const handleRemoveBigProcess = async (bigProcessId = currentBigProcess?.Id ?? null) => {
-    if (bigProcessId === null) {
-      throw new Error("Selecciona un macroflujo para eliminarlo.");
-    }
-
+    if (bigProcessId === null) throw new Error("Selecciona un macroflujo para eliminarlo.");
     const currentIndex = bigProcesses.findIndex((item) => item.Id === bigProcessId);
-    if (currentIndex === -1) {
-      throw new Error("No se encontró el macroflujo.");
-    }
-    const fallbackId = bigProcesses[currentIndex + 1]?.Id ?? bigProcesses[currentIndex - 1]?.Id ?? null;
-    selectedBigProcessId = fallbackId;
-    selectedProcessId = null;
-    selectedStepId = null;
-
-    await persistFlowChange(
-      () => RemoveBigProcess(bigProcessId),
-      "Macroflujo eliminado.",
-      "remove-big-process",
-      { throwOnError: true }
-    );
+    selectedBigProcessId = bigProcesses[currentIndex + 1]?.Id ?? bigProcesses[currentIndex - 1]?.Id ?? null;
+    selectedProcessId = null; selectedStepId = null;
+    await persistFlowChange(() => RemoveBigProcess(bigProcessId), "Macroflujo eliminado.", "remove-big-process", { throwOnError: true });
   };
 
   const handleAddProcess = async () => {
-    if (!currentBigProcess) {
-      throw new Error("Primero crea o selecciona un macroflujo.");
-    }
+    if (!currentBigProcess) throw new Error("Primero crea o selecciona un macroflujo.");
     const name = newProcessName.trim();
-    if (!name) {
-      throw new Error("Ingresa un nombre para el proceso.");
-    }
-
+    if (!name) throw new Error("Ingresa un nombre para el proceso.");
     selectedBigProcessId = currentBigProcess.Id;
     selectedProcessId = (project?.ProcessLastMax ?? 0) + 1;
     selectedStepId = null;
-    await persistFlowChange(
-      () => AddProcess(currentBigProcess.Id, name, newProcessDescription.trim()),
-      "Proceso agregado al macroflujo.",
-      "add-process",
-      { throwOnError: true }
-    );
-    newProcessName = "";
-    newProcessDescription = "";
+    await persistFlowChange(() => AddProcess(currentBigProcess!.Id, name, newProcessDescription.trim()), "Proceso agregado al macroflujo.", "add-process", { throwOnError: true });
+    newProcessName = ""; newProcessDescription = "";
   };
 
-  const prepareProcessEdit = (process: utils.Process) => {
-    if (!currentBigProcess) {
-      throw new Error("Primero selecciona un macroflujo.");
-    }
-    selectedBigProcessId = currentBigProcess.Id;
-    selectedProcessId = process.Id;
-    selectedStepId = null;
-    processDraftName = process.Name ?? "";
-    processDraftDescription = process.Description ?? "";
+  const prepareProcessEdit = (p: utils.Process) => {
+    if (!currentBigProcess) throw new Error("Primero selecciona un macroflujo.");
+    selectedBigProcessId = currentBigProcess.Id; selectedProcessId = p.Id; selectedStepId = null;
+    processDraftName = p.Name ?? ""; processDraftDescription = p.Description ?? "";
   };
 
   const handleSaveProcess = async (processId = currentProcess?.Id ?? null) => {
-    if (!currentBigProcess || processId === null) {
-      throw new Error("Selecciona un proceso para editarlo.");
-    }
+    if (!currentBigProcess || processId === null) throw new Error("Selecciona un proceso para editarlo.");
     const name = processDraftName.trim();
-    if (!name) {
-      throw new Error("El proceso necesita un nombre.");
-    }
-
-    selectedProcessId = processId;
-    selectedStepId = null;
-    await persistFlowChange(
-      () => EditProcess(currentBigProcess.Id, processId, name, processDraftDescription.trim()),
-      "Proceso actualizado.",
-      "edit-process",
-      { throwOnError: true }
-    );
+    if (!name) throw new Error("El proceso necesita un nombre.");
+    selectedProcessId = processId; selectedStepId = null;
+    await persistFlowChange(() => EditProcess(currentBigProcess!.Id, processId, name, processDraftDescription.trim()), "Proceso actualizado.", "edit-process", { throwOnError: true });
   };
 
   const handleRemoveProcess = async (processId = currentProcess?.Id ?? null) => {
-    if (!currentBigProcess || processId === null) {
-      throw new Error("Selecciona un proceso para eliminarlo.");
-    }
-
+    if (!currentBigProcess || processId === null) throw new Error("Selecciona un proceso para eliminarlo.");
     const currentIndex = currentProcesses.findIndex((item) => item.Id === processId);
-    if (currentIndex === -1) {
-      throw new Error("No se encontró el proceso.");
-    }
-    const fallbackId = currentProcesses[currentIndex + 1]?.Id ?? currentProcesses[currentIndex - 1]?.Id ?? null;
-    selectedProcessId = fallbackId;
+    selectedProcessId = currentProcesses[currentIndex + 1]?.Id ?? currentProcesses[currentIndex - 1]?.Id ?? null;
     selectedStepId = null;
-
-    await persistFlowChange(
-      () => RemoveProcess(currentBigProcess.Id, processId),
-      "Proceso eliminado.",
-      "remove-process",
-      { throwOnError: true }
-    );
+    await persistFlowChange(() => RemoveProcess(currentBigProcess!.Id, processId), "Proceso eliminado.", "remove-process", { throwOnError: true });
   };
 
   const handleAddStep = async () => {
-    if (!currentBigProcess || !currentProcess) {
-      throw new Error("Selecciona un proceso antes de crear pasos.");
-    }
+    if (!currentBigProcess || !currentProcess) throw new Error("Selecciona un proceso antes de crear pasos.");
     const name = newStepName.trim();
-    if (!name) {
-      throw new Error("Ingresa un nombre para el paso.");
-    }
-
+    if (!name) throw new Error("Ingresa un nombre para el paso.");
     selectedStepId = (project?.StepsLastMax ?? 0) + 1;
-    await persistFlowChange(
-      () => AddStep(currentBigProcess.Id, currentProcess.Id, name, newStepDescription.trim()),
-      "Paso agregado al proceso.",
-      "add-step",
-      { throwOnError: true }
-    );
-    newStepName = "";
-    newStepDescription = "";
+    await persistFlowChange(() => AddStep(currentBigProcess!.Id, currentProcess!.Id, name, newStepDescription.trim()), "Paso agregado al proceso.", "add-step", { throwOnError: true });
+    newStepName = ""; newStepDescription = "";
   };
 
-  const prepareStepEdit = (processId: number, step: utils.Step) => {
-    if (!currentBigProcess) {
-      throw new Error("Primero selecciona un macroflujo.");
-    }
-    selectedBigProcessId = currentBigProcess.Id;
-    selectedProcessId = processId;
-    selectedStepId = step.Id;
-    stepDraftName = step.Name ?? "";
-    stepDraftDescription = step.Description ?? "";
+  const prepareStepEdit = (processId: number, s: utils.Step) => {
+    if (!currentBigProcess) throw new Error("Primero selecciona un macroflujo.");
+    selectedBigProcessId = currentBigProcess.Id; selectedProcessId = processId; selectedStepId = s.Id;
+    stepDraftName = s.Name ?? ""; stepDraftDescription = s.Description ?? "";
   };
 
   const prepareStepDetail = (processId: number, stepId: number) => {
-    if (!currentBigProcess) {
-      throw new Error("Primero selecciona un macroflujo.");
-    }
-    selectedBigProcessId = currentBigProcess.Id;
-    selectedProcessId = processId;
-    selectedStepId = stepId;
+    if (!currentBigProcess) throw new Error("Primero selecciona un macroflujo.");
+    selectedBigProcessId = currentBigProcess.Id; selectedProcessId = processId; selectedStepId = stepId;
   };
 
-  const handleSaveStep = async (
-    processId = currentProcess?.Id ?? null,
-    stepId = currentStep?.Id ?? null
-  ) => {
-    if (!currentBigProcess || processId === null || stepId === null) {
-      throw new Error("Selecciona un paso para editarlo.");
-    }
+  const handleSaveStep = async (processId = currentProcess?.Id ?? null, stepId = currentStep?.Id ?? null) => {
+    if (!currentBigProcess || processId === null || stepId === null) throw new Error("Selecciona un paso para editarlo.");
     const name = stepDraftName.trim();
-    if (!name) {
-      throw new Error("El paso necesita un nombre.");
-    }
-
-    selectedProcessId = processId;
-    selectedStepId = stepId;
-    await persistFlowChange(
-      () => EditStep(currentBigProcess.Id, processId, stepId, name, stepDraftDescription.trim()),
-      "Paso actualizado.",
-      "edit-step",
-      { throwOnError: true }
-    );
+    if (!name) throw new Error("El paso necesita un nombre.");
+    selectedProcessId = processId; selectedStepId = stepId;
+    await persistFlowChange(() => EditStep(currentBigProcess!.Id, processId, stepId, name, stepDraftDescription.trim()), "Paso actualizado.", "edit-step", { throwOnError: true });
   };
 
-  const handleRemoveStep = async (
-    processId = currentProcess?.Id ?? null,
-    stepId = currentStep?.Id ?? null
-  ) => {
-    if (!currentBigProcess || processId === null || stepId === null) {
-      throw new Error("Selecciona un paso para eliminarlo.");
-    }
-
-    const process = currentProcesses.find((item) => item.Id === processId);
-    const steps = process?.Steps ?? [];
+  const handleRemoveStep = async (processId = currentProcess?.Id ?? null, stepId = currentStep?.Id ?? null) => {
+    if (!currentBigProcess || processId === null || stepId === null) throw new Error("Selecciona un paso para eliminarlo.");
+    const steps = currentProcess?.Steps ?? [];
     const currentIndex = steps.findIndex((item) => item.Id === stepId);
-    if (currentIndex === -1) {
-      throw new Error("No se encontró el paso.");
-    }
-    const fallbackId = steps[currentIndex + 1]?.Id ?? steps[currentIndex - 1]?.Id ?? null;
     selectedProcessId = processId;
-    selectedStepId = fallbackId;
-
-    await persistFlowChange(
-      () => RemoveStep(currentBigProcess.Id, processId, stepId),
-      "Paso eliminado.",
-      "remove-step",
-      { throwOnError: true }
-    );
+    selectedStepId = steps[currentIndex + 1]?.Id ?? steps[currentIndex - 1]?.Id ?? null;
+    await persistFlowChange(() => RemoveStep(currentBigProcess!.Id, processId, stepId), "Paso eliminado.", "remove-step", { throwOnError: true });
   };
 
   const handleAddResource = async () => {
-    if (!currentBigProcess || !currentProcess || !currentStep) {
-      throw new Error("Selecciona un paso antes de asociar tablas.");
-    }
-    if (!entities.length || newResourceTableId === null) {
-      throw new Error("Necesitas entidades para vincular recursos.");
-    }
-
-    await persistFlowChange(
-      () => AddResource(currentBigProcess.Id, currentProcess.Id, currentStep.Id, newResourceTableId, newResourceRole),
-      "Tabla vinculada al paso.",
-      "add-resource",
-      { throwOnError: true }
-    );
+    if (!currentBigProcess || !currentProcess || !currentStep) throw new Error("Selecciona un paso antes de asociar tablas.");
+    if (newResourceTableId === null) throw new Error("Necesitas entidades para vincular recursos.");
+    await persistFlowChange(() => AddResource(currentBigProcess!.Id, currentProcess!.Id, currentStep!.Id, newResourceTableId!, newResourceRole), "Tabla vinculada al paso.", "add-resource", { throwOnError: true });
   };
 
-  const prepareResourceEdit = (resource: utils.Resource) => {
-    updateResourceDraft(resource.Id, {
-      tableId: resource.TableId,
-      role: resource.Role
-    });
-  };
+  const prepareResourceEdit = (resource: utils.Resource) => { updateResourceDraft(resource.Id, { tableId: resource.TableId, role: resource.Role }); };
 
   const handleSaveResource = async (resourceId: number) => {
-    if (!currentBigProcess || !currentProcess || !currentStep) {
-      throw new Error("Selecciona un paso antes de editar recursos.");
-    }
+    if (!currentBigProcess || !currentProcess || !currentStep) throw new Error("Selecciona un paso antes de editar recursos.");
     const draft = resourceEdits[resourceId];
-    if (!draft) {
-      throw new Error("No se encontró el recurso a editar.");
-    }
-
-    await persistFlowChange(
-      () => EditResource(currentBigProcess.Id, currentProcess.Id, currentStep.Id, resourceId, draft.tableId, draft.role),
-      "Recurso actualizado.",
-      "edit-resource",
-      { throwOnError: true }
-    );
+    if (!draft) throw new Error("No se encontró el recurso a editar.");
+    await persistFlowChange(() => EditResource(currentBigProcess!.Id, currentProcess!.Id, currentStep!.Id, resourceId, draft.tableId, draft.role), "Recurso actualizado.", "edit-resource", { throwOnError: true });
   };
 
   const handleRemoveResource = async (resourceId: number) => {
-    if (!currentBigProcess || !currentProcess || !currentStep) {
-      throw new Error("Selecciona un paso antes de eliminar recursos.");
-    }
-    await persistFlowChange(
-      () => RemoveResource(currentBigProcess.Id, currentProcess.Id, currentStep.Id, resourceId),
-      "Recurso eliminado del paso.",
-      "remove-resource",
-      { throwOnError: true }
-    );
+    if (!currentBigProcess || !currentProcess || !currentStep) throw new Error("Selecciona un paso antes de eliminar recursos.");
+    await persistFlowChange(() => RemoveResource(currentBigProcess!.Id, currentProcess!.Id, currentStep!.Id, resourceId), "Recurso eliminado del paso.", "remove-resource", { throwOnError: true });
   };
 
-  let bigProcesses: utils.BigProcess[] = [];
-  let currentBigProcess: utils.BigProcess | null = null;
-  let currentProcesses: utils.Process[] = [];
-  let currentProcess: utils.Process | null = null;
-  let currentSteps: utils.Step[] = [];
-  let currentStep: utils.Step | null = null;
+  $effect(() => {
+    if (selectedBigProcessId === null && bigProcesses.length > 0) selectedBigProcessId = bigProcesses[0].Id;
+    if (selectedBigProcessId !== null && !bigProcesses.some((item) => item.Id === selectedBigProcessId)) selectedBigProcessId = bigProcesses[0]?.Id ?? null;
+  });
 
-  $: bigProcesses = project?.BigProcesses ?? [];
+  $effect(() => {
+    if (selectedProcessId === null && currentProcesses.length > 0) selectedProcessId = currentProcesses[0].Id;
+    if (selectedProcessId !== null && !currentProcesses.some((item) => item.Id === selectedProcessId)) selectedProcessId = currentProcesses[0]?.Id ?? null;
+  });
 
-  $: if (selectedBigProcessId === null && bigProcesses.length > 0) {
-    selectedBigProcessId = bigProcesses[0].Id;
-  }
+  $effect(() => {
+    if (selectedStepId === null && currentSteps.length > 0) selectedStepId = currentSteps[0].Id;
+    if (selectedStepId !== null && !currentSteps.some((item) => item.Id === selectedStepId)) selectedStepId = currentSteps[0]?.Id ?? null;
+  });
 
-  $: if (selectedBigProcessId !== null && !bigProcesses.some((item) => item.Id === selectedBigProcessId)) {
-    selectedBigProcessId = bigProcesses[0]?.Id ?? null;
-  }
+  $effect(() => {
+    if ((currentBigProcess?.Id ?? null) !== lastBigProcessSyncId) {
+      bigProcessDraftName = currentBigProcess?.Name ?? "";
+      bigProcessDraftDescription = currentBigProcess?.Description ?? "";
+      lastBigProcessSyncId = currentBigProcess?.Id ?? null;
+    }
+  });
 
-  $: currentBigProcess = bigProcesses.find((item) => item.Id === selectedBigProcessId) ?? null;
+  $effect(() => {
+    if ((currentProcess?.Id ?? null) !== lastProcessSyncId) {
+      processDraftName = currentProcess?.Name ?? "";
+      processDraftDescription = currentProcess?.Description ?? "";
+      lastProcessSyncId = currentProcess?.Id ?? null;
+    }
+  });
 
-  $: currentProcesses = currentBigProcess?.Processes ?? [];
+  $effect(() => {
+    if ((currentStep?.Id ?? null) !== lastStepSyncId) {
+      stepDraftName = currentStep?.Name ?? "";
+      stepDraftDescription = currentStep?.Description ?? "";
+      lastStepSyncId = currentStep?.Id ?? null;
+    }
+  });
 
-  $: if (selectedProcessId === null && currentProcesses.length > 0) {
-    selectedProcessId = currentProcesses[0].Id;
-  }
+  $effect(() => {
+    if (newResourceTableId === null && entities.length > 0) newResourceTableId = entities[0].Id;
+  });
 
-  $: if (selectedProcessId !== null && !currentProcesses.some((item) => item.Id === selectedProcessId)) {
-    selectedProcessId = currentProcesses[0]?.Id ?? null;
-  }
-
-  $: currentProcess = currentProcesses.find((item) => item.Id === selectedProcessId) ?? null;
-
-  $: currentSteps = currentProcess?.Steps ?? [];
-
-  $: if (selectedStepId === null && currentSteps.length > 0) {
-    selectedStepId = currentSteps[0].Id;
-  }
-
-  $: if (selectedStepId !== null && !currentSteps.some((item) => item.Id === selectedStepId)) {
-    selectedStepId = currentSteps[0]?.Id ?? null;
-  }
-
-  $: currentStep = currentSteps.find((item) => item.Id === selectedStepId) ?? null;
-
-  $: if ((currentBigProcess?.Id ?? null) !== lastBigProcessSyncId) {
-    bigProcessDraftName = currentBigProcess?.Name ?? "";
-    bigProcessDraftDescription = currentBigProcess?.Description ?? "";
-    lastBigProcessSyncId = currentBigProcess?.Id ?? null;
-  }
-
-  $: if ((currentProcess?.Id ?? null) !== lastProcessSyncId) {
-    processDraftName = currentProcess?.Name ?? "";
-    processDraftDescription = currentProcess?.Description ?? "";
-    lastProcessSyncId = currentProcess?.Id ?? null;
-  }
-
-  $: if ((currentStep?.Id ?? null) !== lastStepSyncId) {
-    stepDraftName = currentStep?.Name ?? "";
-    stepDraftDescription = currentStep?.Description ?? "";
-    lastStepSyncId = currentStep?.Id ?? null;
-  }
-
-  $: if (newResourceTableId === null && entities.length > 0) {
-    newResourceTableId = entities[0].Id;
-  }
-
-  $: {
-    const signature = currentStep
-      ? `${currentStep.Id}:${(currentStep.Resources ?? []).map((resource) => `${resource.Id}-${resource.TableId}-${resource.Role}`).join("|")}`
-      : "";
+  $effect(() => {
+    const signature = currentStep ? `${currentStep.Id}:${(currentStep.Resources ?? []).map((r) => `${r.Id}-${r.TableId}-${r.Role}`).join("|")}` : "";
     if (signature !== lastResourceSignature) {
       if (currentStep) {
         const nextEdits: Record<number, ResourceDraft> = {};
         for (const resource of currentStep.Resources ?? []) {
-          nextEdits[resource.Id] = {
-            tableId: resource.TableId,
-            role: resource.Role
-          };
+          nextEdits[resource.Id] = { tableId: resource.TableId, role: resource.Role };
         }
         resourceEdits = nextEdits;
-      } else {
-        resourceEdits = {};
-      }
+      } else { resourceEdits = {}; }
       lastResourceSignature = signature;
     }
-  }
+  });
+
+  $effect(() => {
+    if (autoScrollDirection === 0) return;
+    const interval = setInterval(() => { window.scrollBy({top: autoScrollDirection * AUTO_SCROLL_STEP, behavior: "auto"}); }, 16);
+    return () => clearInterval(interval);
+  });
 </script>
 
 <svelte:window
-  on:dragover={updateAutoScroll}
-  on:drop={stopAutoScroll}
-  on:dragend={stopAutoScroll}
+  ondragover={updateAutoScroll}
+  ondrop={stopAutoScroll}
+  ondragend={stopAutoScroll}
 />
 
 <section class="flows-tab">
@@ -874,18 +506,20 @@
           onOpen={prepareBigProcessCreate}
           onSuccess={handleAddBigProcess}
         >
-          <div class="modal-intro">
-            <p class="modal-kicker local-modal-kicker">Nuevo macroflujo</p>
-            <p class="modal-hint local-modal-hint">Abre un frente completo para agrupar procesos hermanos y darle un nombre operativo claro.</p>
-          </div>
-          <label class="field">
-            <span>Nombre</span>
-            <input type="text" bind:value={newBigProcessName} placeholder="Produccion, compras, despacho..." />
-          </label>
-          <label class="field">
-            <span>Descripción</span>
-            <textarea rows="3" bind:value={newBigProcessDescription} placeholder="Enmarca el objetivo general del bloque." />
-          </label>
+          {#snippet children()}
+            <div class="modal-intro">
+              <p class="modal-kicker local-modal-kicker">Nuevo macroflujo</p>
+              <p class="modal-hint local-modal-hint">Abre un frente completo para agrupar procesos hermanos y darle un nombre operativo claro.</p>
+            </div>
+            <label class="field">
+              <span>Nombre</span>
+              <input type="text" bind:value={newBigProcessName} placeholder="Produccion, compras, despacho..." />
+            </label>
+            <label class="field">
+              <span>Descripción</span>
+              <textarea rows="3" bind:value={newBigProcessDescription} placeholder="Enmarca el objetivo general del bloque." />
+            </label>
+          {/snippet}
         </ModalLauncher>
       </div>
 
@@ -899,11 +533,11 @@
               class:macro-card--dragging={bigProcess.Id === draggingBigProcessId}
               class:macro-card--drop-target={bigProcess.Id === hoverBigProcessId && bigProcess.Id !== draggingBigProcessId}
               draggable="true"
-              on:click={() => selectBigProcess(bigProcess.Id)}
-              on:dragstart={(event) => startBigProcessDrag(bigProcess.Id, event)}
-              on:dragover={(event) => handleBigProcessDragOver(bigProcess.Id, event)}
-              on:drop={(event) => handleBigProcessDrop(bigProcess.Id, event)}
-              on:dragend={clearBigProcessDrag}
+              onclick={() => selectBigProcess(bigProcess.Id)}
+              ondragstart={(event) => startBigProcessDrag(bigProcess.Id, event)}
+              ondragover={(event) => handleBigProcessDragOver(bigProcess.Id, event)}
+              ondrop={(event) => handleBigProcessDrop(bigProcess.Id, event)}
+              ondragend={clearBigProcessDrag}
               in:fly={{y: 18, delay: index * 40, duration: 360, easing: quintOut}}
               animate:flip={{duration: 420, easing: quintOut}}
               style={`view-transition-name: macro-flow-${bigProcess.Id};`}
@@ -943,20 +577,22 @@
               onOpen={() => prepareProcessCreate(currentBigProcess.Id)}
               onSuccess={handleAddProcess}
             >
-              <div class="modal-intro">
-                <p class="modal-kicker local-modal-kicker">Nuevo proceso</p>
-                <p class="modal-hint local-modal-hint">Se agregará dentro de <strong>{currentBigProcess.Name}</strong>.</p>
-              </div>
-              <div class="modal-form-grid">
-                <label class="field">
-                  <span>Nombre del proceso</span>
-                  <input type="text" bind:value={newProcessName} placeholder="Aprobar orden, despachar, validar..." />
-                </label>
-                <label class="field">
-                  <span>Descripción</span>
-                  <textarea rows="3" bind:value={newProcessDescription} placeholder="Qué resuelve este proceso dentro del macroflujo." />
-                </label>
-              </div>
+              {#snippet children()}
+                <div class="modal-intro">
+                  <p class="modal-kicker local-modal-kicker">Nuevo proceso</p>
+                  <p class="modal-hint local-modal-hint">Se agregará dentro de <strong>{currentBigProcess.Name}</strong>.</p>
+                </div>
+                <div class="modal-form-grid">
+                  <label class="field">
+                    <span>Nombre del proceso</span>
+                    <input type="text" bind:value={newProcessName} placeholder="Aprobar orden, despachar, validar..." />
+                  </label>
+                  <label class="field">
+                    <span>Descripción</span>
+                    <textarea rows="3" bind:value={newProcessDescription} placeholder="Qué resuelve este proceso dentro del macroflujo." />
+                  </label>
+                </div>
+              {/snippet}
             </ModalLauncher>
           </div>
 
@@ -967,7 +603,7 @@
                   type="button"
                   class:process-rail-card={true}
                   class:process-rail-card--active={process.Id === currentProcess?.Id}
-                  on:click={() => selectProcess(process.Id)}
+                  onclick={() => selectProcess(process.Id)}
                 >
                   <span class="process-rail-card__index">{String(index + 1).padStart(2, "0")}</span>
                   <ButtonIcon name="stack"/>
@@ -1022,18 +658,20 @@
                 onOpen={() => prepareBigProcessEdit(currentBigProcess)}
                 onSuccess={() => handleSaveBigProcess(currentBigProcess.Id)}
               >
-                <div class="modal-intro">
-                  <p class="modal-kicker local-modal-kicker">Editor macroflujo</p>
-                  <p class="modal-hint local-modal-hint">Actualiza el nombre y el alcance operativo del bloque principal.</p>
-                </div>
-                <label class="field">
-                  <span>Nombre</span>
-                  <input type="text" bind:value={bigProcessDraftName} placeholder="Macroflujo principal" />
-                </label>
-                <label class="field">
-                  <span>Descripción</span>
-                  <textarea rows="3" bind:value={bigProcessDraftDescription} placeholder="Describe el frente operativo que contiene." />
-                </label>
+                {#snippet children()}
+                  <div class="modal-intro">
+                    <p class="modal-kicker local-modal-kicker">Editor macroflujo</p>
+                    <p class="modal-hint local-modal-hint">Actualiza el nombre y el alcance operativo del bloque principal.</p>
+                  </div>
+                  <label class="field">
+                    <span>Nombre</span>
+                    <input type="text" bind:value={bigProcessDraftName} placeholder="Macroflujo principal" />
+                  </label>
+                  <label class="field">
+                    <span>Descripción</span>
+                    <textarea rows="3" bind:value={bigProcessDraftDescription} placeholder="Describe el frente operativo que contiene." />
+                  </label>
+                {/snippet}
               </ModalLauncher>
               <ModalLauncher
                 triggerLabel="Eliminar macroflujo"
@@ -1046,7 +684,9 @@
                 triggerDisabled={busySection !== null}
                 onSuccess={() => handleRemoveBigProcess(currentBigProcess.Id)}
               >
-                <p class="modal-hint local-modal-hint">Se eliminará <strong>{currentBigProcess.Name}</strong> con todos sus procesos y pasos.</p>
+                {#snippet children()}
+                  <p class="modal-hint local-modal-hint">Se eliminará <strong>{currentBigProcess.Name}</strong> con todos sus procesos y pasos.</p>
+                {/snippet}
               </ModalLauncher>
             </div>
           </div>
@@ -1059,10 +699,10 @@
             class:process-lane--dragging={currentProcess.Id === draggingProcessId}
             class:process-lane--drop-target={currentProcess.Id === hoverProcessId && currentProcess.Id !== draggingProcessId}
             draggable="true"
-            on:dragstart={(event) => startProcessDrag(currentProcess.Id, event)}
-            on:dragover={(event) => handleProcessDragOver(currentProcess.Id, event)}
-            on:drop={(event) => handleProcessDrop(currentProcess.Id, event)}
-            on:dragend={clearProcessDrag}
+            ondragstart={(event) => startProcessDrag(currentProcess.Id, event)}
+            ondragover={(event) => handleProcessDragOver(currentProcess.Id, event)}
+            ondrop={(event) => handleProcessDrop(currentProcess.Id, event)}
+            ondragend={clearProcessDrag}
             style={`view-transition-name: process-lane-${currentProcess.Id};`}
           >
             <header class="process-lane__head">
@@ -1089,18 +729,20 @@
                     onOpen={() => prepareProcessEdit(currentProcess)}
                     onSuccess={() => handleSaveProcess(currentProcess.Id)}
                   >
-                    <div class="modal-intro">
-                      <p class="modal-kicker local-modal-kicker">Editor proceso</p>
-                      <p class="modal-hint local-modal-hint">Ajusta la línea de trabajo sin salir del macroflujo actual.</p>
-                    </div>
-                    <label class="field">
-                      <span>Nombre</span>
-                      <input type="text" bind:value={processDraftName} placeholder="Proceso específico" />
-                    </label>
-                    <label class="field">
-                      <span>Descripción</span>
-                      <textarea rows="3" bind:value={processDraftDescription} placeholder="Qué ocurre en esta línea de trabajo." />
-                    </label>
+                    {#snippet children()}
+                      <div class="modal-intro">
+                        <p class="modal-kicker local-modal-kicker">Editor proceso</p>
+                        <p class="modal-hint local-modal-hint">Ajusta la línea de trabajo sin salir del macroflujo actual.</p>
+                      </div>
+                      <label class="field">
+                        <span>Nombre</span>
+                        <input type="text" bind:value={processDraftName} placeholder="Proceso específico" />
+                      </label>
+                      <label class="field">
+                        <span>Descripción</span>
+                        <textarea rows="3" bind:value={processDraftDescription} placeholder="Qué ocurre en esta línea de trabajo." />
+                      </label>
+                    {/snippet}
                   </ModalLauncher>
                   <ModalLauncher
                     triggerLabel="Eliminar"
@@ -1113,7 +755,9 @@
                     triggerDisabled={busySection !== null}
                     onSuccess={() => handleRemoveProcess(currentProcess.Id)}
                   >
-                    <p class="modal-hint local-modal-hint">Se eliminará <strong>{currentProcess.Name}</strong> con todos sus pasos.</p>
+                    {#snippet children()}
+                      <p class="modal-hint local-modal-hint">Se eliminará <strong>{currentProcess.Name}</strong> con todos sus pasos.</p>
+                    {/snippet}
                   </ModalLauncher>
                 </div>
               </div>
@@ -1127,10 +771,10 @@
                     class:step-node--dragging={step.Id === draggingStepId}
                     class:step-node--drop-target={step.Id === hoverStepId && step.Id !== draggingStepId}
                     draggable="true"
-                    on:dragstart={(event) => startStepDrag(step.Id, event)}
-                    on:dragover={(event) => handleStepDragOver(step.Id, event)}
-                    on:drop={(event) => handleStepDrop(step.Id, event)}
-                    on:dragend={clearStepDrag}
+                    ondragstart={(event) => startStepDrag(step.Id, event)}
+                    ondragover={(event) => handleStepDragOver(step.Id, event)}
+                    ondrop={(event) => handleStepDrop(step.Id, event)}
+                    ondragend={clearStepDrag}
                     in:scale={{duration: 280, delay: stepIndex * 55, start: 0.92, easing: quintOut}}
                     animate:flip={{duration: 320, easing: quintOut}}
                     style={`view-transition-name: step-node-${step.Id};`}
@@ -1140,7 +784,9 @@
                       <strong>{step.Name}</strong>
                       <span>{step.Description || "Describe qué pasa en este punto."}</span>
                     </span>
-                    <div class="step-node__meta" on:click|stopPropagation>
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <div class="step-node__meta" onclick={(e) => e.stopPropagation()}>
                       <div class="step-node__meta-top">
                         <span class="step-node__resource-count">{step.Resources?.length ?? 0}</span>
                         <div class="step-node__actions">
@@ -1156,18 +802,20 @@
                             onOpen={() => prepareStepEdit(currentProcess.Id, step)}
                             onSuccess={() => handleSaveStep(currentProcess.Id, step.Id)}
                           >
-                            <div class="modal-intro">
-                              <p class="modal-kicker local-modal-kicker">Editor paso</p>
-                              <p class="modal-hint local-modal-hint">Refina el nombre y la descripción de este punto del flujo.</p>
-                            </div>
-                            <label class="field">
-                              <span>Nombre del paso</span>
-                              <input type="text" bind:value={stepDraftName} placeholder="Nombre del hito" />
-                            </label>
-                            <label class="field">
-                              <span>Descripción</span>
-                              <textarea rows="3" bind:value={stepDraftDescription} placeholder="Qué debe pasar exactamente aquí." />
-                            </label>
+                            {#snippet children()}
+                              <div class="modal-intro">
+                                <p class="modal-kicker local-modal-kicker">Editor paso</p>
+                                <p class="modal-hint local-modal-hint">Refina el nombre y la descripción de este punto del flujo.</p>
+                              </div>
+                              <label class="field">
+                                <span>Nombre del paso</span>
+                                <input type="text" bind:value={stepDraftName} placeholder="Nombre del hito" />
+                              </label>
+                              <label class="field">
+                                <span>Descripción</span>
+                                <textarea rows="3" bind:value={stepDraftDescription} placeholder="Qué debe pasar exactamente aquí." />
+                              </label>
+                            {/snippet}
                           </ModalLauncher>
                           <ModalLauncher
                             triggerLabel="Vincular tabla"
@@ -1181,28 +829,30 @@
                             onOpen={() => prepareResourceCreate(currentProcess.Id, step.Id)}
                             onSuccess={handleAddResource}
                           >
-                            <div class="modal-intro">
-                              <p class="modal-kicker local-modal-kicker">Nuevo recurso</p>
-                              <p class="modal-hint local-modal-hint">Asocia una entidad como input u output para este paso.</p>
-                            </div>
-                            <div class="modal-form-grid modal-form-grid--compact">
-                              <label class="field">
-                                <span>Tabla</span>
-                                <select bind:value={newResourceTableId} disabled={!entities.length}>
-                                  {#each entities as entity}
-                                    <option value={entity.Id}>{entity.Name}</option>
-                                  {/each}
-                                </select>
-                              </label>
-                              <label class="field">
-                                <span>Rol</span>
-                                <select bind:value={newResourceRole}>
-                                  {#each resourceRoles as role}
-                                    <option value={role}>{role}</option>
-                                  {/each}
-                                </select>
-                              </label>
-                            </div>
+                            {#snippet children()}
+                              <div class="modal-intro">
+                                <p class="modal-kicker local-modal-kicker">Nuevo recurso</p>
+                                <p class="modal-hint local-modal-hint">Asocia una entidad como input u output para este paso.</p>
+                              </div>
+                              <div class="modal-form-grid modal-form-grid--compact">
+                                <label class="field">
+                                  <span>Tabla</span>
+                                  <select bind:value={newResourceTableId} disabled={!entities.length}>
+                                    {#each entities as entity}
+                                      <option value={entity.Id}>{entity.Name}</option>
+                                    {/each}
+                                  </select>
+                                </label>
+                                <label class="field">
+                                  <span>Rol</span>
+                                  <select bind:value={newResourceRole}>
+                                    {#each resourceRoles as role}
+                                      <option value={role}>{role}</option>
+                                    {/each}
+                                  </select>
+                                </label>
+                              </div>
+                            {/snippet}
                           </ModalLauncher>
                           <ModalLauncher
                             triggerLabel="Eliminar"
@@ -1215,7 +865,9 @@
                             triggerDisabled={busySection !== null}
                             onSuccess={() => handleRemoveStep(currentProcess.Id, step.Id)}
                           >
-                            <p class="modal-hint local-modal-hint">Se eliminará <strong>{step.Name}</strong> de este proceso.</p>
+                            {#snippet children()}
+                              <p class="modal-hint local-modal-hint">Se eliminará <strong>{step.Name}</strong> de este proceso.</p>
+                            {/snippet}
                           </ModalLauncher>
                           <ModalLauncher
                             triggerLabel="Ver detalle"
@@ -1229,88 +881,94 @@
                             onOpen={() => prepareStepDetail(currentProcess.Id, step.Id)}
                             onSuccess={async () => {}}
                           >
-                            <div class="modal-intro">
-                              <p class="modal-kicker local-modal-kicker">Recursos del paso</p>
-                              <p class="modal-hint local-modal-hint">Revisa la definición completa de cada tabla y ajusta su rol si hace falta.</p>
-                            </div>
-                            {#if step.Resources?.length}
-                              <div class="resource-list">
-                                {#each step.Resources as resource (resource.Id)}
-                                  <article
-                                    class="resource-row"
-                                    transition:scale={{duration: 180, start: 0.96}}
-                                    animate:flip={{duration: 280, easing: quintOut}}
-                                  >
-                                    <div class="resource-row__identity">
-                                      <span class="resource-row__index">#{resource.Id} · {resource.Role}</span>
-                                      <strong>{entityLabel(resource.TableId)}</strong>
-                                      <p>{entityDescription(resource.TableId)}</p>
-                                    </div>
-                                    <div class="resource-row__actions">
-                                      <ModalLauncher
-                                        triggerLabel="Editar"
-                                        title="Editar recurso"
-                                        confirmLabel="Guardar"
-                                        triggerVariant="edit"
-                                        confirmVariant="primary"
-                                        size="form"
-                                        triggerClass="flow-modal-trigger flow-modal-trigger--inline"
-                                        triggerDisabled={busySection !== null}
-                                        onOpen={() => prepareResourceEdit(resource)}
-                                        onSuccess={() => handleSaveResource(resource.Id)}
-                                      >
-                                        <div class="modal-intro">
-                                          <p class="modal-kicker local-modal-kicker">Editor recurso</p>
-                                          <p class="modal-hint local-modal-hint">Ajusta la tabla relacionada y el rol que cumple en este paso.</p>
-                                        </div>
-                                        <div class="modal-form-grid modal-form-grid--compact">
-                                          <label class="field">
-                                            <span>Tabla</span>
-                                            <select
-                                              value={resourceEdits[resource.Id]?.tableId ?? resource.TableId}
-                                              on:change={(event) => handleResourceTableChange(resource.Id, event)}
-                                            >
-                                              {#each entities as entity}
-                                                <option value={entity.Id}>{entity.Name}</option>
-                                              {/each}
-                                            </select>
-                                          </label>
-                                          <label class="field">
-                                            <span>Rol</span>
-                                            <select
-                                              value={resourceEdits[resource.Id]?.role ?? resource.Role}
-                                              on:change={(event) => handleResourceRoleChange(resource.Id, event)}
-                                            >
-                                              {#each resourceRoles as role}
-                                                <option value={role}>{role}</option>
-                                              {/each}
-                                            </select>
-                                          </label>
-                                        </div>
-                                      </ModalLauncher>
-                                      <ModalLauncher
-                                        triggerLabel="Quitar"
-                                        title="Quitar recurso"
-                                        confirmLabel="Quitar"
-                                        triggerVariant="danger"
-                                        confirmVariant="danger"
-                                        size="default"
-                                        triggerClass="flow-modal-trigger flow-modal-trigger--inline"
-                                        triggerDisabled={busySection !== null}
-                                        onSuccess={() => handleRemoveResource(resource.Id)}
-                                      >
-                                        <p class="modal-hint local-modal-hint">Se quitará <strong>{entityLabel(resource.TableId)}</strong> de este paso.</p>
-                                      </ModalLauncher>
-                                    </div>
-                                  </article>
-                                {/each}
+                            {#snippet children()}
+                              <div class="modal-intro">
+                                <p class="modal-kicker local-modal-kicker">Recursos del paso</p>
+                                <p class="modal-hint local-modal-hint">Revisa la definición completa de cada tabla y ajusta su rol si hace falta.</p>
                               </div>
-                            {:else}
-                              <div class="empty-stage-fragment empty-stage-fragment--resource">
-                                <strong>Aún no hay tablas conectadas</strong>
-                                <p>Vincula entidades como input u output desde los botones del paso.</p>
-                              </div>
-                            {/if}
+                              {#if step.Resources?.length}
+                                <div class="resource-list">
+                                  {#each step.Resources as resource (resource.Id)}
+                                    <article
+                                      class="resource-row"
+                                      transition:scale={{duration: 180, start: 0.96}}
+                                      animate:flip={{duration: 280, easing: quintOut}}
+                                    >
+                                      <div class="resource-row__identity">
+                                        <span class="resource-row__index">#{resource.Id} · {resource.Role}</span>
+                                        <strong>{entityLabel(resource.TableId)}</strong>
+                                        <p>{entityDescription(resource.TableId)}</p>
+                                      </div>
+                                      <div class="resource-row__actions">
+                                        <ModalLauncher
+                                          triggerLabel="Editar"
+                                          title="Editar recurso"
+                                          confirmLabel="Guardar"
+                                          triggerVariant="edit"
+                                          confirmVariant="primary"
+                                          size="form"
+                                          triggerClass="flow-modal-trigger flow-modal-trigger--inline"
+                                          triggerDisabled={busySection !== null}
+                                          onOpen={() => prepareResourceEdit(resource)}
+                                          onSuccess={() => handleSaveResource(resource.Id)}
+                                        >
+                                          {#snippet children()}
+                                            <div class="modal-intro">
+                                              <p class="modal-kicker local-modal-kicker">Editor recurso</p>
+                                              <p class="modal-hint local-modal-hint">Ajusta la tabla relacionada y el rol que cumple en este paso.</p>
+                                            </div>
+                                            <div class="modal-form-grid modal-form-grid--compact">
+                                              <label class="field">
+                                                <span>Tabla</span>
+                                                <select
+                                                  value={resourceEdits[resource.Id]?.tableId ?? resource.TableId}
+                                                  onchange={(event) => handleResourceTableChange(resource.Id, event)}
+                                                >
+                                                  {#each entities as entity}
+                                                    <option value={entity.Id}>{entity.Name}</option>
+                                                  {/each}
+                                                </select>
+                                              </label>
+                                              <label class="field">
+                                                <span>Rol</span>
+                                                <select
+                                                  value={resourceEdits[resource.Id]?.role ?? resource.Role}
+                                                  onchange={(event) => handleResourceRoleChange(resource.Id, event)}
+                                                >
+                                                  {#each resourceRoles as role}
+                                                    <option value={role}>{role}</option>
+                                                  {/each}
+                                                </select>
+                                              </label>
+                                            </div>
+                                          {/snippet}
+                                        </ModalLauncher>
+                                        <ModalLauncher
+                                          triggerLabel="Quitar"
+                                          title="Quitar recurso"
+                                          confirmLabel="Quitar"
+                                          triggerVariant="danger"
+                                          confirmVariant="danger"
+                                          size="default"
+                                          triggerClass="flow-modal-trigger flow-modal-trigger--inline"
+                                          triggerDisabled={busySection !== null}
+                                          onSuccess={() => handleRemoveResource(resource.Id)}
+                                        >
+                                          {#snippet children()}
+                                            <p class="modal-hint local-modal-hint">Se quitará <strong>{entityLabel(resource.TableId)}</strong> de este paso.</p>
+                                          {/snippet}
+                                        </ModalLauncher>
+                                      </div>
+                                    </article>
+                                  {/each}
+                                </div>
+                              {:else}
+                                <div class="empty-stage-fragment empty-stage-fragment--resource">
+                                  <strong>Aún no hay tablas conectadas</strong>
+                                  <p>Vincula entidades como input u output desde los botones del paso.</p>
+                                </div>
+                              {/if}
+                            {/snippet}
                           </ModalLauncher>
                         </div>
                       </div>
@@ -1364,18 +1022,20 @@
                 onOpen={() => prepareStepCreate(currentProcess.Id)}
                 onSuccess={handleAddStep}
               >
-                <div class="modal-intro">
-                  <p class="modal-kicker local-modal-kicker">Nuevo paso</p>
-                  <p class="modal-hint local-modal-hint">Agrégalo al final de <strong>{currentProcess.Name}</strong> y luego reordénalo si hace falta.</p>
-                </div>
-                <label class="field">
-                  <span>Nombre del paso</span>
-                  <input type="text" bind:value={newStepName} placeholder="Validar datos, emitir comprobante..." />
-                </label>
-                <label class="field">
-                  <span>Descripción</span>
-                  <textarea rows="3" bind:value={newStepDescription} placeholder="Qué debe estar listo o qué debe suceder." />
-                </label>
+                {#snippet children()}
+                  <div class="modal-intro">
+                    <p class="modal-kicker local-modal-kicker">Nuevo paso</p>
+                    <p class="modal-hint local-modal-hint">Agrégalo al final de <strong>{currentProcess.Name}</strong> y luego reordénalo si hace falta.</p>
+                  </div>
+                  <label class="field">
+                    <span>Nombre del paso</span>
+                    <input type="text" bind:value={newStepName} placeholder="Validar datos, emitir comprobante..." />
+                  </label>
+                  <label class="field">
+                    <span>Descripción</span>
+                    <textarea rows="3" bind:value={newStepDescription} placeholder="Qué debe estar listo o qué debe suceder." />
+                  </label>
+                {/snippet}
               </ModalLauncher>
             </footer>
           </article>
@@ -1598,755 +1258,109 @@
     padding-inline: 0.9rem;
   }
 
-  :global(.flow-modal-trigger--hero),
   :global(.flow-modal-trigger--tail) {
-    width: auto;
-  }
-
-  :global(.flow-modal-trigger--subrail) {
-    width: 100%;
-  }
-
-  .modal-intro {
-    display: grid;
-    gap: 0.3rem;
-    padding-bottom: 0.35rem;
-  }
-
-  .local-modal-kicker,
-  .local-modal-hint {
-    margin: 0;
-  }
-
-  .modal-form-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.85rem;
-  }
-
-  .modal-form-grid--compact {
-    grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.72fr);
-  }
-
-  .macro-card {
-    position: relative;
-    display: grid;
-    gap: 0.32rem;
-    padding: 0.95rem 1rem 1rem 1.08rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius-md) - 10px);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, transparent), color-mix(in srgb, var(--surface) 82%, transparent));
-    text-align: left;
-    box-shadow: 0 14px 28px color-mix(in srgb, var(--ink) 8%, transparent);
-    transition:
-      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 220ms ease,
-      box-shadow 220ms ease;
-  }
-
-  .macro-card::after {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 4px;
-    border-radius: 999px;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white 8%), color-mix(in srgb, var(--accent-strong) 80%, transparent));
-    opacity: 0.24;
-    transition: opacity 200ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .macro-card:hover,
-  .macro-card--active {
-    transform: translateX(6px) translateY(-2px);
-    border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
-    box-shadow:
-      0 24px 42px color-mix(in srgb, var(--ink) 12%, transparent),
-      0 0 0 0.18rem color-mix(in srgb, var(--accent) 10%, transparent);
-  }
-
-  .macro-card:hover::after,
-  .macro-card--active::after {
-    opacity: 1;
-    transform: scaleY(1);
-  }
-
-  .macro-card--dragging {
-    opacity: 0.48;
-    transform: scale(0.985);
-  }
-
-  .macro-card--drop-target {
-    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-    box-shadow:
-      0 24px 42px color-mix(in srgb, var(--ink) 12%, transparent),
-      0 0 0 0.22rem color-mix(in srgb, var(--accent) 14%, transparent);
-  }
-
-  .macro-card__index {
-    color: var(--ink-faint);
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.16em;
-  }
-
-  .macro-card strong {
-    font-size: 1.02rem;
-    line-height: 1.2;
-  }
-
-  .macro-card__meta,
-  .macro-card__hint {
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    line-height: 1.4;
-  }
-
-  .stage-panel {
-    display: grid;
-    gap: 1rem;
-    padding: 1.05rem;
-    background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 32%),
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, transparent), color-mix(in srgb, var(--surface) 88%, transparent));
-  }
-
-  .stage-hero {
-    position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) auto;
-    gap: 1rem;
-    padding: 1.1rem 1.15rem;
-    border-radius: calc(var(--radius-lg) - 10px);
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--surface-strong) 96%, transparent), color-mix(in srgb, var(--surface) 80%, transparent)),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%);
-    overflow: hidden;
-  }
-
-  .stage-hero::after {
-    content: "";
-    position: absolute;
-    inset: auto -10% -18% auto;
-    width: 16rem;
-    height: 16rem;
-    border-radius: 50%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 16%, transparent), transparent 72%);
-    animation: hero-orbit 10s linear infinite;
-    pointer-events: none;
-  }
-
-  .stage-hero__copy p {
-    margin: 0.45rem 0 0;
-    max-width: 60ch;
-    color: var(--ink-soft);
-    line-height: 1.55;
-  }
-
-  .stage-hero__side {
-    display: grid;
-    gap: 0.8rem;
-    align-content: start;
-  }
-
-  .hero-stats {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(6rem, 1fr));
-    gap: 0.7rem;
-  }
-
-  .hero-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.6rem;
-  }
-
-  .hero-stat {
-    display: grid;
-    gap: 0.28rem;
-    padding: 0.8rem 0.9rem;
-    min-width: 7rem;
-    border-radius: 1.1rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 84%, transparent);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 20%, transparent);
-  }
-
-  .hero-stat span {
-    color: var(--ink-faint);
-    font-size: 0.74rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .hero-stat strong {
-    font-size: 1.35rem;
-    line-height: 1;
-  }
-
-  .process-track {
-    display: grid;
-    gap: 0.95rem;
-  }
-
-  .process-lane {
-    display: grid;
-    gap: 0.9rem;
-    padding: 1rem;
-    border-radius: calc(var(--radius-lg) - 10px);
-    border: 1px solid var(--border);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 94%, transparent), color-mix(in srgb, var(--surface) 78%, transparent));
-    box-shadow: 0 18px 34px color-mix(in srgb, var(--ink) 8%, transparent);
-    cursor: pointer;
-    transition:
-      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 220ms ease,
-      box-shadow 220ms ease;
-    outline: none;
-  }
-
-  .process-lane:hover,
-  .process-lane:focus-visible,
-  .process-lane--active {
-    transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
-    box-shadow:
-      0 26px 46px color-mix(in srgb, var(--ink) 11%, transparent),
-      0 0 0 0.18rem color-mix(in srgb, var(--accent) 10%, transparent);
-  }
-
-  .process-lane--dragging {
-    opacity: 0.46;
-    transform: scale(0.988);
-  }
-
-  .process-lane--drop-target {
-    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-    box-shadow:
-      0 26px 46px color-mix(in srgb, var(--ink) 11%, transparent),
-      0 0 0 0.24rem color-mix(in srgb, var(--accent) 13%, transparent);
-  }
-
-  .process-lane__head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1rem;
-  }
-
-  .process-lane__side {
-    display: grid;
-    gap: 0.72rem;
-    align-content: start;
-    justify-items: end;
-  }
-
-  .process-lane__head h3 {
-    margin: 0.16rem 0 0;
-    font-size: 1.35rem;
-    line-height: 1;
-  }
-
-  .process-lane__head p {
-    margin: 0.45rem 0 0;
-    color: var(--ink-soft);
-    line-height: 1.5;
-  }
-
-  .process-lane__meta {
-    display: grid;
-    gap: 0.42rem;
-    align-content: start;
-    justify-items: end;
-    color: var(--ink-faint);
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .process-lane__actions,
-  .process-lane__footer {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem;
-  }
-
-  .process-lane__footer {
-    justify-content: flex-start;
-    padding-top: 0.2rem;
-  }
-
-  .step-sequence {
-    position: relative;
-    display: grid;
-    gap: 0.8rem;
-    padding-left: 1rem;
-  }
-
-  .step-sequence::before {
-    content: "";
-    position: absolute;
-    left: 0.28rem;
-    top: 0.2rem;
-    bottom: 0.2rem;
-    width: 2px;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 65%, transparent), color-mix(in srgb, var(--accent) 12%, transparent));
-  }
-
-  .step-node {
-    position: relative;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.78rem 0.9rem;
-    align-items: start;
-    padding: 0.82rem 0.95rem;
-    border-radius: 1.05rem;
-    border: 1px solid var(--border);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, transparent), color-mix(in srgb, var(--surface) 82%, transparent));
-    text-align: left;
-    transition:
-      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 180ms ease,
-      box-shadow 180ms ease;
-  }
-
-  .step-node::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: -0.95rem;
-    width: 0.95rem;
-    height: 2px;
-    background: color-mix(in srgb, var(--accent) 40%, transparent);
-    transform: translateY(-50%);
-  }
-
-  .step-node:hover,
-  .step-node:focus-within {
-    transform: translateX(6px);
-    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-    box-shadow:
-      0 18px 26px color-mix(in srgb, var(--ink) 10%, transparent),
-      0 0 0 0.16rem color-mix(in srgb, var(--accent) 9%, transparent);
-  }
-
-  .step-node--dragging {
-    opacity: 0.42;
-    transform: scale(0.985);
-  }
-
-  .step-node--drop-target {
-    border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-    box-shadow:
-      0 18px 26px color-mix(in srgb, var(--ink) 10%, transparent),
-      0 0 0 0.2rem color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-
-  .step-node__order {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    min-width: 2.5rem;
-    min-height: 2.5rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.8rem;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-  }
-
-  .step-node__body {
-    display: grid;
-    gap: 0.25rem;
-    align-self: center;
-  }
-
-  .step-node__body strong {
-    font-size: 0.96rem;
-    line-height: 1.2;
-  }
-
-  .step-node__body span {
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    line-height: 1.45;
-  }
-
-  .step-node__meta {
-    grid-column: 2;
-    display: grid;
-    gap: 0.72rem;
-    margin-top: 0.1rem;
-    padding: 0.78rem 0.82rem 0.85rem;
-    border-radius: 0.95rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 97%, transparent), color-mix(in srgb, var(--surface) 86%, transparent)),
-      linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 58%);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
-  }
-
-  .step-node__meta-top {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.65rem;
-    align-items: start;
-  }
-
-  .step-node__resource-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    justify-self: start;
-    min-width: 2.25rem;
-    min-height: 2.25rem;
-    padding: 0 0.65rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.8rem;
-    font-weight: 800;
-  }
-
-  .step-node__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    justify-content: flex-start;
-  }
-
-  .resource-summary {
-    display: grid;
-    gap: 0.55rem;
-  }
-
-  .resource-summary__group {
-    display: grid;
-    gap: 0.35rem;
-  }
-
-  .resource-summary__label {
-    font-size: 0.73rem;
-    font-weight: 900;
-    letter-spacing: 0.11em;
-    text-transform: uppercase;
-  }
-
-  .resource-summary__label--input {
-    color: color-mix(in srgb, var(--success) 74%, var(--ink));
-  }
-
-  .resource-summary__label--output {
-    color: color-mix(in srgb, var(--accent) 78%, var(--ink));
-  }
-
-  .resource-summary__chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-
-  .resource-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 1.9rem;
-    padding: 0 0.72rem;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 97%, transparent), color-mix(in srgb, var(--surface) 90%, transparent));
-    font-size: 0.76rem;
-    font-weight: 700;
-    line-height: 1;
-  }
-
-  .resource-chip--input {
-    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
-    background: color-mix(in srgb, var(--success) 12%, var(--surface-strong));
-    color: color-mix(in srgb, var(--success) 84%, var(--ink));
-  }
-
-  .resource-chip--output {
-    border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
-    color: var(--accent-strong);
-  }
-
-  .resource-chip--ghost {
-    color: var(--ink-faint);
-    background: color-mix(in srgb, var(--surface) 72%, transparent);
-  }
-
-  .field {
-    display: grid;
-    gap: 0.38rem;
-  }
-
-  .field span {
-    font-size: 0.79rem;
-    font-weight: 800;
-    color: var(--ink-soft);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-
-  .field input,
-  .field textarea,
-  .field select {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
-    color: var(--ink);
-    padding: 0.8rem 0.92rem;
-    box-sizing: border-box;
-    resize: vertical;
-    transition:
-      border-color 160ms ease,
-      box-shadow 160ms ease,
-      transform 160ms ease,
-      background 160ms ease;
-  }
-
-  .field input:focus,
-  .field textarea:focus,
-  .field select:focus {
-    outline: none;
-    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-    box-shadow: 0 0 0 0.22rem color-mix(in srgb, var(--accent) 14%, transparent);
-    transform: translateY(-1px);
-    background: color-mix(in srgb, var(--surface-strong) 98%, transparent);
-  }
-
-  .field--compact input,
-  .field--compact select {
-    min-height: 2.8rem;
-    padding: 0.72rem 0.85rem;
-  }
-
-  .action-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem;
-  }
-
-  .resource-list {
-    display: grid;
-    gap: 0.72rem;
-  }
-
-  .resource-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: start;
-    gap: 0.8rem;
-    padding: 0.9rem;
-    border-radius: 1rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
-  }
-
-  .resource-row__identity {
-    display: grid;
-    gap: 0.2rem;
-  }
-
-  .resource-row__index {
-    color: var(--ink-faint);
-    font-size: 0.74rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  .resource-row__identity strong {
-    font-size: 0.95rem;
-  }
-
-  .resource-row__identity p {
-    margin: 0;
-    color: var(--ink-soft);
-    font-size: 0.82rem;
-    line-height: 1.42;
-  }
-
-  .resource-row__actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.45rem;
-  }
-
-  .signal-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 2rem;
-    padding: 0 0.8rem;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--accent) 11%, var(--surface-strong));
-    color: var(--accent-strong);
-    font-size: 0.8rem;
-    font-weight: 800;
-  }
-
-  .signal-chip--quiet {
-    border-color: var(--border);
-    background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
-    color: var(--ink-soft);
-  }
-
-  .empty-state,
-  .empty-stage-fragment {
-    border-radius: calc(var(--radius-md) - 8px);
-    border: 1px dashed color-mix(in srgb, var(--accent) 16%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
-    color: var(--ink-soft);
-  }
-
-  .empty-state,
-  .empty-stage-fragment {
-    display: grid;
-    place-items: center;
-    gap: 0.35rem;
-    min-height: 13rem;
-    padding: 1.2rem;
-    text-align: center;
-  }
-
-  .empty-state strong,
-  .empty-stage-fragment strong {
-    color: var(--ink);
-    font-size: 1rem;
-  }
-
-  .empty-state p,
-  .empty-stage-fragment p {
-    margin: 0;
-    line-height: 1.55;
-  }
-
-  .empty-state--rail {
-    min-height: 11rem;
-  }
-
-  .empty-stage-fragment--resource {
-    min-height: 8rem;
+    margin-top: 1rem;
   }
 
   @keyframes scan-surface {
-    0% {
-      transform: translateX(-120%);
-    }
-    100% {
-      transform: translateX(120%);
-    }
+    to { transform: translateX(100%); }
   }
 
-  @keyframes hero-orbit {
-    0% {
-      transform: translate3d(0, 0, 0) scale(0.92);
-    }
-    50% {
-      transform: translate3d(-1.2rem, -0.8rem, 0) scale(1.02);
-    }
-    100% {
-      transform: translate3d(0, 0, 0) scale(0.92);
-    }
+  .step-sequence {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.25rem;
+    padding: 1.5rem;
   }
 
-  @media (max-width: 1380px) {
-    .studio-shell {
-      grid-template-columns: minmax(15rem, 0.8fr) minmax(0, 1.25fr);
-    }
+  .step-node {
+    background: var(--background);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    cursor: grab;
+    transition: all 0.2s ease;
   }
 
-  @media (max-width: 1040px) {
-    .studio-shell,
-    .modal-form-grid {
-      grid-template-columns: 1fr;
-    }
+  .step-node:active { cursor: grabbing; }
 
-    .stage-hero {
-      grid-template-columns: 1fr;
-    }
-
-    .hero-stats {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .panel-head {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .rail-subpanel__head,
-    .resource-row {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    :global(.flow-modal-trigger--rail),
-    :global(.flow-modal-trigger--hero),
-    :global(.flow-modal-trigger--tail),
-    :global(.flow-modal-trigger--subrail) {
-      width: 100%;
-    }
+  .step-node:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
   }
 
-  @media (max-width: 720px) {
-    .flow-toolbar__meta,
-    .action-row {
-      justify-content: stretch;
-    }
+  .step-node--dragging { opacity: 0.5; }
+  .step-node--drop-target { border: 2px dashed var(--accent); }
 
-    .hero-stats {
-      grid-template-columns: 1fr;
-    }
-
-    .resource-row__actions,
-    .process-lane__actions,
-    .hero-actions,
-    .process-lane__footer,
-    .step-node__actions {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .process-lane__head {
-      grid-template-columns: 1fr;
-    }
-
-    .process-lane__meta,
-    .process-lane__side {
-      justify-items: start;
-    }
-
-    .step-node__meta-top {
-      grid-template-columns: 1fr;
-    }
+  .step-node__order {
+    font-size: 0.65rem;
+    font-weight: 900;
+    color: var(--accent);
+    opacity: 0.6;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .rail-panel::before,
-    .stage-panel::before,
-    .stage-hero::after {
-      animation: none;
-    }
+  .step-node__body strong { font-size: 0.95rem; }
+  .step-node__body span { font-size: 0.75rem; color: var(--ink-soft); display: block; margin-top: 0.25rem; }
 
-    .macro-card,
-    .process-lane,
-    .step-node,
-    .field input,
-    .field textarea,
-    .field select {
-      transition: none;
-    }
+  .step-node__meta {
+    margin-top: auto;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-card);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .step-node__meta-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .step-node__resource-count {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--accent);
+    background: var(--accent-ghost);
+    padding: 0.2rem 0.6rem;
+    border-radius: 99px;
+  }
+
+  .step-node__actions { display: flex; gap: 0.4rem; }
+
+  .resource-summary { display: flex; flex-direction: column; gap: 0.4rem; }
+  .resource-summary__label { font-size: 0.6rem; font-weight: 900; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 0.2rem; display: block; }
+  .resource-summary__chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+
+  .resource-chip { font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; }
+  .resource-chip--input { background: var(--accent-ghost); color: var(--accent); border: 1px solid var(--accent-soft); }
+  .resource-chip--output { background: var(--success-ghost); color: var(--success); border: 1px solid var(--success-soft); }
+  .resource-chip--ghost { color: var(--ink-faint); font-style: italic; }
+
+  .stage-hero { padding: 2rem; border-bottom: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; }
+  .hero-stats { display: flex; gap: 2rem; }
+  .hero-stat { display: flex; flex-direction: column; }
+  .hero-stat span { font-size: 0.65rem; font-weight: 800; text-transform: uppercase; color: var(--ink-soft); }
+  .hero-stat strong { font-size: 1.5rem; line-height: 1; margin-top: 0.25rem; }
+
+  .process-lane { background: var(--surface); border: 1px solid var(--border-card); border-radius: var(--radius-lg); overflow: hidden; margin: 1.5rem; }
+  .process-lane__head { padding: 1.5rem; border-bottom: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: center; }
+  .process-lane__side { display: flex; align-items: center; gap: 2rem; }
+  .process-lane__meta { display: flex; gap: 1rem; font-size: 0.75rem; font-weight: 700; color: var(--ink-soft); }
+  .process-lane__actions { display: flex; gap: 0.5rem; }
+
+  .resource-list { display: flex; flex-direction: column; gap: 1rem; padding: 1rem 0; }
+  .resource-row { background: var(--background); border: 1px solid var(--border-card); border-radius: var(--radius-md); padding: 1rem; display: flex; justify-content: space-between; align-items: flex-start; }
+  .resource-row__identity strong { display: block; }
+  .resource-row__identity p { font-size: 0.75rem; color: var(--ink-soft); margin: 0.25rem 0 0; }
+  .resource-row__index { font-size: 0.6rem; font-weight: 900; color: var(--accent); text-transform: uppercase; }
+  .resource-row__actions { display: flex; gap: 0.5rem; }
+
+  @media (max-width: 1200px) {
+    .studio-shell { grid-template-columns: 1fr; }
+    .rail-panel { min-height: auto; position: static; }
   }
 </style>

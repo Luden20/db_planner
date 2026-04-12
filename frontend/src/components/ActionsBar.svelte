@@ -1,9 +1,17 @@
 <script lang="ts">
-  export let onSave:  () => Promise<void> = async () => {
-  };
-  export let onExport: () => void = () => {};
-  export let onExportWithoutRelations: () => void = () => {};
-  export let onExit: () => void = () => {};
+  import ButtonIcon from "./ButtonIcon.svelte";
+
+  let { 
+    onSave = async () => {}, 
+    onExport = () => {}, 
+    onExportWithoutRelations = () => {}, 
+    onExit = () => {} 
+  } = $props<{
+    onSave?: () => Promise<void>;
+    onExport?: () => void;
+    onExportWithoutRelations?: () => void;
+    onExit?: () => void;
+  }>();
 </script>
 
 <section class="actions-bar">
@@ -17,21 +25,21 @@
     </div>
   </div>
   <div class="action-buttons">
-    <button class="btn primary" on:click={onSave}>
+    <button class="btn primary" onclick={onSave}>
       <ButtonIcon name="save"/>
       <span>Guardar</span>
     </button>
     <div class="export-buttons">
-      <button class="btn secondary" on:click={onExport}>
+      <button class="btn secondary" onclick={onExport}>
         <ButtonIcon name="download"/>
         <span>Exportar con relaciones</span>
       </button>
-      <button class="btn secondary" on:click={onExportWithoutRelations}>
+      <button class="btn secondary" onclick={onExportWithoutRelations}>
         <ButtonIcon name="download"/>
         <span>Exportar sin relaciones</span>
       </button>
     </div>
-    <button class="btn danger" on:click={onExit}>
+    <button class="btn danger" onclick={onExit}>
       <ButtonIcon name="exit"/>
       <span>Salir</span>
     </button>

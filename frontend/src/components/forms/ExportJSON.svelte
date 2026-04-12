@@ -1,18 +1,23 @@
-﻿<script lang="ts">
+<script lang="ts">
+  import { Dialog } from "bits-ui";
   import ModalLauncher from "../ModalLauncher.svelte";
   import ButtonIcon from "../ButtonIcon.svelte";
-  import {ExportEntitiesToJSON} from "../../../wailsjs/go/main/App";
-  import type {utils} from "../../../wailsjs/go/models";
-  import {showToast} from "../../lib/toast";
+  import { ExportEntitiesToJSON } from "../../../wailsjs/go/main/App";
+  import type { utils } from "../../../wailsjs/go/models";
+  import { showToast } from "../../lib/toast";
 
-  export let entities: utils.Entity[] = [];
-  export let intersectionEntities: utils.IntersectionEntity[] = [];
+  let { 
+    entities = [], 
+    intersectionEntities = [] 
+  } = $props<{
+    entities?: utils.Entity[];
+    intersectionEntities?: utils.IntersectionEntity[];
+  }>();
   
-  let selectedIds: Set<number> = new Set();
-  let selectedIntersectionIds: Set<number> = new Set();
-  let jsonResult = "";
-  let modalRef: ModalLauncher | null = null;
-  let step: "select" | "result" = "select";
+  let selectedIds = $state<Set<number>>(new Set());
+  let selectedIntersectionIds = $state<Set<number>>(new Set());
+  let jsonResult = $state("");
+  let step = $state<"select" | "result">("select");
 
   const toggleAll = () => {
     const allSelected = selectedIds.size === entities.length && selectedIntersectionIds.size === intersectionEntities.length;
@@ -26,20 +31,14 @@
   };
 
   const toggleEntity = (id: number) => {
-    if (selectedIds.has(id)) {
-      selectedIds.delete(id);
-    } else {
-      selectedIds.add(id);
-    }
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else selectedIds.add(id);
     selectedIds = new Set(selectedIds);
   };
 
   const toggleIntersection = (id: number) => {
-    if (selectedIntersectionIds.has(id)) {
-      selectedIntersectionIds.delete(id);
-    } else {
-      selectedIntersectionIds.add(id);
-    }
+    if (selectedIntersectionIds.has(id)) selectedIntersectionIds.delete(id);
+    else selectedIntersectionIds.add(id);
     selectedIntersectionIds = new Set(selectedIntersectionIds);
   };
 
@@ -50,9 +49,7 @@
     }
 
     try {
-      const ids = Array.from(selectedIds);
-      const intersectionIds = Array.from(selectedIntersectionIds);
-      jsonResult = await ExportEntitiesToJSON(ids, intersectionIds);
+      jsonResult = await ExportEntitiesToJSON(Array.from(selectedIds), Array.from(selectedIntersectionIds));
       step = "result";
     } catch (err) {
       showToast("Error al exportar: " + err, "error");
@@ -68,28 +65,24 @@
     const blob = new Blob([jsonResult], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'export_db_planner.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = 'export_db_planner.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast("Descarga iniciada", "success");
   };
 
-  const reset = () => {
-    step = "select";
-    jsonResult = "";
-  };
+  const reset = () => { step = "select"; jsonResult = ""; };
 </script>
 
-<ModalLauncher bind:this={modalRef} onOpen={reset}>
-  <div slot="trigger" class="control control--sm control--ghost">
-    <ButtonIcon name="export"/>
+{#snippet trigger()}
+  <Dialog.Trigger class="control control--sm control--ghost">
+    <ButtonIcon name="plus"/>
     <span>Exportar JSON (IA)</span>
-  </div>
+  </Dialog.Trigger>
+{/snippet}
 
-  <div slot="content" class="export-json-modal">
+<ModalLauncher {trigger} onOpen={reset}>
+  <div class="export-json-modal">
     <div class="modal-header">
       <h2 class="title">{step === 'select' ? 'Seleccionar tablas para exportar' : 'JSON Generado'}</h2>
       <p class="muted">
@@ -102,7 +95,7 @@
     {#if step === 'select'}
       <div class="export-selection">
         <div class="selection-actions">
-          <button class="control control--xs control--ghost" on:click={toggleAll}>
+          <button class="control control--xs control--ghost" onclick={toggleAll}>
             {selectedIds.size === entities.length && selectedIntersectionIds.size === intersectionEntities.length ? 'Desmarcar todo' : 'Marcar todo'}
           </button>
           <span class="selection-count">{selectedIds.size + selectedIntersectionIds.size} seleccionadas</span>
@@ -115,7 +108,7 @@
                 <input 
                   type="checkbox" 
                   checked={selectedIds.has(entity.Id)} 
-                  on:change={() => toggleEntity(entity.Id)}
+                  onchange={() => toggleEntity(entity.Id)}
                 />
                 <span class="entity-name">{entity.Name}</span>
                 {#if entity.Description}
@@ -132,7 +125,7 @@
                 <input 
                   type="checkbox" 
                   checked={selectedIntersectionIds.has(item.Entity.Id)} 
-                  on:change={() => toggleIntersection(item.Entity.Id)}
+                  onchange={() => toggleIntersection(item.Entity.Id)}
                 />
                 <span class="entity-name">{item.Entity.Name}</span>
                 {#if item.Entity.Description}
@@ -144,7 +137,7 @@
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn btn--primary" on:click={handleExport} disabled={selectedIds.size === 0 && selectedIntersectionIds.size === 0}>
+        <button class="btn btn--primary" onclick={handleExport} disabled={selectedIds.size === 0 && selectedIntersectionIds.size === 0}>
           Generar JSON
         </button>
       </div>
@@ -153,14 +146,14 @@
         <pre class="json-preview"><code>{jsonResult}</code></pre>
       </div>
       <div class="modal-actions">
-        <button class="btn btn--secondary" on:click={() => step = 'select'}>
+        <button class="btn btn--secondary" onclick={() => step = 'select'}>
           Volver
         </button>
         <div class="button-group">
-          <button class="btn btn--secondary" on:click={copyToClipboard}>
+          <button class="btn btn--secondary" onclick={copyToClipboard}>
             Copiar
           </button>
-          <button class="btn btn--primary" on:click={downloadJSON}>
+          <button class="btn btn--primary" onclick={downloadJSON}>
             Descargar .json
           </button>
         </div>

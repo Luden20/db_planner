@@ -481,6 +481,24 @@ export namespace utils {
 	}
 	
 	
+	export class PDAttributeError {
+	    entity_name: string;
+	    attribute_name: string;
+	    type: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PDAttributeError(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entity_name = source["entity_name"];
+	        this.attribute_name = source["attribute_name"];
+	        this.type = source["type"];
+	        this.message = source["message"];
+	    }
+	}
 	
 	
 	
